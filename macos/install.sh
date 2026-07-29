@@ -34,8 +34,8 @@ for target in cli keeper; do
   asset=$1 sums=$2
   archive="$root/downloads/$(basename "$asset")"
   checksum_file="$root/downloads/$(service_name "$target").checksums.txt"
-  curl --fail --location --silent --show-error "$asset" -o "$archive"
-  curl --fail --location --silent --show-error "$sums" -o "$checksum_file"
+  github_curl --fail --location --silent --show-error "$asset" -o "$archive"
+  github_curl --fail --location --silent --show-error "$sums" -o "$checksum_file"
   version=$(basename "$archive" | sed -E 's/.*_v?([0-9]+(\.[0-9]+)+)_.*/\1/')
   install_release "$target" "$version" "$archive" "$checksum_file"
   if is_registered "$target"; then kickstart_service "$target"; else bootstrap_service "$target"; fi

@@ -14,6 +14,21 @@ release_repository() {
   esac
 }
 
+github_token() {
+  token_file=${1:-${CPA_GITHUB_TOKEN_FILE:-$HOME/personal/github-token/personal-access-token.txt}}
+  [ -r "$token_file" ] || return 0
+  tr -d '\r\n' < "$token_file"
+}
+
+github_curl() {
+  token=$(github_token)
+  if [ -n "$token" ]; then
+    curl -H "Authorization: Bearer $token" "$@"
+  else
+    curl "$@"
+  fi
+}
+
 activate_release() {
   service=$(service_name "$1") || return 1
   version=$2
@@ -55,7 +70,7 @@ fetch_latest_release() {
   service=$(service_name "$1") || return 1
   root=$(runtime_root) repository=$(release_repository "$service")
   metadata="$root/downloads/$service-release.json"
-  curl --fail --location --silent --show-error "https://api.github.com/repos/$repository/releases/latest" -o "$metadata" || return 1
+  github_curl --fail --location --silent --show-error "https://api.github.com/repos/$repository/releases/latest" -o "$metadata" || return 1
   case "$service" in
     cli-proxy-api) pattern='CLIProxyAPI_[0-9.]+_darwin_aarch64\.tar\.gz' ;;
     cpa-usage-keeper) pattern='cpa-usage-keeper_v[0-9.]+_darwin_arm64\.tar\.gz' ;;
