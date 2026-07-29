@@ -1,0 +1,12 @@
+.DS_Store
+.worktrees/
+*.db
+*.db-shm
+*.db-wal
+*.log
+*.tar.gz
+auths/
+downloads/
+config/*.yaml
+config/*.env
+!config/*.example
