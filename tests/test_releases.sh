@@ -15,4 +15,7 @@ printf 'bad archive' > "$TMP_ROOT/bad.tar.gz"
 printf '0000  bad.tar.gz\n' > "$TMP_ROOT/checksums.txt"
 assert_fails install_release cli 1.2.3 "$TMP_ROOT/bad.tar.gz" "$TMP_ROOT/checksums.txt"
 assert_eq "$old_link" "$(readlink "$TMP_ROOT/current/cli-proxy-api")"
+target=cli
+activate_release cli 1.0.0
+assert_eq cli "$target"
 printf 'PASS releases\n'

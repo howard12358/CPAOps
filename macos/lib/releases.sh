@@ -60,7 +60,7 @@ github_curl() {
   curl -H "Authorization: Bearer $token" "$@"
 }
 
-activate_release() {
+activate_release() (
   service=$(service_name "$1") || return 1
   version=$2
   root=$(runtime_root)
@@ -70,7 +70,7 @@ activate_release() {
   rm -f "$temporary"
   ln -s "../releases/$service/$version" "$temporary"
   mv -f "$temporary" "$root/current/$service"
-}
+)
 
 install_release() {
   service=$(service_name "$1") || return 1
