@@ -14,4 +14,7 @@ sed -i '' 's/__REQUIRED__/secret/g' "$TMP_ROOT/config/config.yaml" "$TMP_ROOT/co
 validate_config
 chmod 644 "$TMP_ROOT/config/keeper.env"
 assert_fails validate_config
+chmod 600 "$TMP_ROOT/config/keeper.env"
+ensure_keeper_defaults
+assert_contains 'CPA_PUBLIC_URL=http://127.0.0.1:8317' "$(cat "$TMP_ROOT/config/keeper.env")"
 printf 'PASS config\n'

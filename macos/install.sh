@@ -27,6 +27,7 @@ if [ ! -f "$root/config/config.yaml" ] || [ ! -f "$root/config/keeper.env" ]; th
   fi
   chmod 600 "$root/config/config.yaml" "$root/config/keeper.env"
 fi
+ensure_keeper_defaults
 validate_config
 load_proxy || prompt_proxy
 render_plists

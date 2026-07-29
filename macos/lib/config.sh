@@ -25,3 +25,9 @@ validate_config() {
     printf '%s\n' 'Keeper env must contain APP_PORT.' >&2; return 1;
   }
 }
+
+ensure_keeper_defaults() {
+  keeper_env="$(runtime_root)/config/keeper.env"
+  grep -Eq '^CPA_PUBLIC_URL=' "$keeper_env" || printf '%s\n' 'CPA_PUBLIC_URL=http://127.0.0.1:8317' >> "$keeper_env"
+  chmod 600 "$keeper_env"
+}
