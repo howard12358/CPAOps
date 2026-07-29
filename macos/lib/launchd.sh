@@ -1,6 +1,6 @@
 #!/bin/sh
 
-script_dir=${DEPLOY_REPO_ROOT:?DEPLOY_REPO_ROOT must be set by the entry script}
+script_dir=${DEPLOY_REPO_ROOT:?DEPLOY_REPO_ROOT must be set by the entry script}/macos
 
 render_plist() {
   service=$(service_name "$1") || return 1
