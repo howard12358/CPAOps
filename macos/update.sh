@@ -1,8 +1,9 @@
 #!/bin/sh
 set -eu
 DEPLOY_REPO_ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-. "$DEPLOY_REPO_ROOT/macos/lib/common.sh"; . "$DEPLOY_REPO_ROOT/macos/lib/releases.sh"; . "$DEPLOY_REPO_ROOT/macos/lib/lifecycle.sh"
+. "$DEPLOY_REPO_ROOT/macos/lib/common.sh"; . "$DEPLOY_REPO_ROOT/macos/lib/proxy.sh"; . "$DEPLOY_REPO_ROOT/macos/lib/releases.sh"; . "$DEPLOY_REPO_ROOT/macos/lib/lifecycle.sh"
 target=${1:-all}; root=$(runtime_root)
+load_proxy || true
 services=$(service_targets "$target") || exit 2
 for service in $services; do
   [ "$service" != keeper ] || { command -v sqlite3 >/dev/null && sqlite3 "$root/keeper/app.db" ".backup '$root/keeper/pre-update-$(date +%Y%m%d%H%M%S).db'" || true; }

@@ -10,4 +10,4 @@ assert_file() { [ -f "$1" ] || fail "expected file: $1"; }
 assert_dir() { [ -d "$1" ] || fail "expected directory: $1"; }
 assert_not_file() { [ ! -e "$1" ] || fail "did not expect path: $1"; }
 assert_contains() { case "$2" in *"$1"*) ;; *) fail "expected [$2] to contain [$1]" ;; esac; }
-assert_fails() { "$@" >/dev/null 2>&1 && fail "expected command to fail: $*"; }
+assert_fails() { if ( "$@" ) >/dev/null 2>&1; then fail "expected command to fail: $*"; fi; }
