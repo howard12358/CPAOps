@@ -5,8 +5,11 @@ set -eu
 . "$ROOT/macos/lib/common.sh"
 . "$ROOT/macos/lib/releases.sh"
 
-token_file="$TMP_ROOT/token"
-printf 'test-token\n' > "$token_file"
-token=$(github_token "$token_file")
-assert_eq test-token "$token"
+CPA_STACK_ROOT="$TMP_ROOT/runtime"
+export CPA_STACK_ROOT
+ensure_runtime_layout
+assert_eq '' "$(github_token)"
+save_github_token test-token
+assert_eq test-token "$(github_token)"
+assert_eq 600 "$(stat -f '%Lp' "$TMP_ROOT/runtime/config/github-token")"
 printf 'PASS github auth\n'

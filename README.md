@@ -10,7 +10,7 @@ sh macos/install.sh --init
 
 也可先复制 `config/` 中两个 `.example` 文件到 `~/Library/Application Support/cpa-stack/config/` 并填好必填项（权限为 `600`），再运行 `sh macos/install.sh`。
 
-脚本只支持 Apple Silicon，自动从官方 GitHub Release 下载并校验 SHA-256。服务仅绑定本机的 `127.0.0.1:8317` 和 `127.0.0.1:18080`。
+脚本只支持 Apple Silicon，自动从官方 GitHub Release 下载并校验 SHA-256。服务仅绑定本机的 `127.0.0.1:8317` 和 `127.0.0.1:18080`。下载默认匿名访问；仅在 GitHub 返回 `401` 或 `403` 时才交互要求 token，并将其以 `600` 权限保存到运行目录的 `config/github-token`。后续 token 失效时会要求输入新 token 并替换旧值。
 
 ## 运维
 

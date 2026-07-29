@@ -15,18 +15,49 @@ release_repository() {
 }
 
 github_token() {
-  token_file=${1:-${CPA_GITHUB_TOKEN_FILE:-$HOME/personal/github-token/personal-access-token.txt}}
+  token_file="$(runtime_root)/config/github-token"
   [ -r "$token_file" ] || return 0
   tr -d '\r\n' < "$token_file"
 }
 
+save_github_token() {
+  token_file="$(runtime_root)/config/github-token"
+  umask 077
+  printf '%s\n' "$1" > "$token_file"
+  chmod 600 "$token_file"
+}
+
+prompt_github_token() {
+  [ -t 0 ] || { printf '%s\n' 'GitHub denied the request (401/403). Re-run interactively to provide a GitHub token.' >&2; return 1; }
+  printf 'GitHub token (input hidden): ' >&2
+  stty -echo
+  trap 'stty echo' EXIT HUP INT TERM
+  IFS= read -r token
+  stty echo
+  trap - EXIT HUP INT TERM
+  printf '\n' >&2
+  [ -n "$token" ] || return 1
+  save_github_token "$token"
+  printf '%s\n' "$token"
+}
+
 github_curl() {
+  http_code=$(curl "$@" --write-out '%{http_code}')
+  curl_result=$?
+  [ "$curl_result" -eq 0 ] && return 0
+  case "$http_code" in
+    401|403) ;;
+    *) return "$curl_result" ;;
+  esac
   token=$(github_token)
   if [ -n "$token" ]; then
-    curl -H "Authorization: Bearer $token" "$@"
-  else
-    curl "$@"
+    http_code=$(curl -H "Authorization: Bearer $token" "$@" --write-out '%{http_code}')
+    curl_result=$?
+    [ "$curl_result" -eq 0 ] && return 0
+    case "$http_code" in 401|403) ;; *) return "$curl_result" ;; esac
   fi
+  token=$(prompt_github_token) || return 1
+  curl -H "Authorization: Bearer $token" "$@"
 }
 
 activate_release() {
