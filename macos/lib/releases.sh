@@ -42,19 +42,26 @@ prompt_github_token() {
 }
 
 github_curl() {
-  http_code=$(curl "$@" --write-out '%{http_code}')
-  curl_result=$?
-  [ "$curl_result" -eq 0 ] && return 0
+  error_file=$(mktemp "$(runtime_root)/downloads/github-curl.XXXXXX") || return 1
+  if http_code=$(curl "$@" --write-out '%{http_code}' 2>"$error_file"); then
+    rm -f "$error_file"
+    return 0
+  else
+    curl_result=$?
+  fi
   case "$http_code" in
-    401|403) ;;
-    *) return "$curl_result" ;;
+    401|403) rm -f "$error_file" ;;
+    *) cat "$error_file" >&2; rm -f "$error_file"; return "$curl_result" ;;
   esac
   token=$(github_token)
   if [ -n "$token" ]; then
-    http_code=$(curl -H "Authorization: Bearer $token" "$@" --write-out '%{http_code}')
-    curl_result=$?
-    [ "$curl_result" -eq 0 ] && return 0
-    case "$http_code" in 401|403) ;; *) return "$curl_result" ;; esac
+    if http_code=$(curl -H "Authorization: Bearer $token" "$@" --write-out '%{http_code}' 2>"$error_file"); then
+      rm -f "$error_file"
+      return 0
+    else
+      curl_result=$?
+    fi
+    case "$http_code" in 401|403) rm -f "$error_file" ;; *) cat "$error_file" >&2; rm -f "$error_file"; return "$curl_result" ;; esac
   fi
   token=$(prompt_github_token) || return 1
   curl -H "Authorization: Bearer $token" "$@"
