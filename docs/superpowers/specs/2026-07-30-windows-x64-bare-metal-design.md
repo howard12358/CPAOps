@@ -35,14 +35,14 @@ CPAOps/
 │   └── keeper.env.example
 ├── macos/                         # 现有 macOS 实现，不在本方案改动范围内
 ├── windows/
-│   ├── Install-CPAStack.ps1
-│   ├── Start-CPAStack.ps1
-│   ├── Stop-CPAStack.ps1
-│   ├── Restart-CPAStack.ps1
-│   ├── Get-CPAStackStatus.ps1
-│   ├── Update-CPAStack.ps1
-│   ├── Uninstall-CPAStack.ps1
-│   ├── Set-CPAStackProxy.ps1
+│   ├── install.ps1
+│   ├── start.ps1
+│   ├── stop.ps1
+│   ├── restart.ps1
+│   ├── status.ps1
+│   ├── update.ps1
+│   ├── uninstall.ps1
+│   ├── proxy.ps1
 │   ├── lib/
 │   │   ├── Common.ps1
 │   │   ├── Config.ps1
@@ -55,7 +55,7 @@ CPAOps/
 └── tests/windows/
 ```
 
-脚本全部以 PowerShell 5.1 兼容语法编写，并可在 PowerShell 7 运行。文档入口为 `powershell -ExecutionPolicy Bypass -File .\Install-CPAStack.ps1`；不要求修改机器的系统执行策略。
+脚本全部以 PowerShell 5.1 兼容语法编写，并可在 PowerShell 7 运行。Windows 与 macOS 使用相同的运维动词、服务目标和默认行为；仅脚本扩展名不同。文档入口为 `powershell -ExecutionPolicy Bypass -File .\install.ps1`；不要求修改机器的系统执行策略。
 
 ## 私有运行目录与 ACL
 
@@ -93,7 +93,7 @@ C:\ProgramData\CPAStack\
 
 ```powershell
 cd .\windows
-powershell -ExecutionPolicy Bypass -File .\Install-CPAStack.ps1
+powershell -ExecutionPolicy Bypass -File .\install.ps1
 ```
 
 安装器按顺序执行：
@@ -134,17 +134,19 @@ powershell -ExecutionPolicy Bypass -File .\Install-CPAStack.ps1
 3. 从 `current\` 目录启动相应二进制，传入稳定配置路径；
 4. 把标准输出与错误输出追加到 `logs\`。
 
-PowerShell 运维接口：
+PowerShell 运维接口与 macOS 一致：
 
 ```powershell
-.\Start-CPAStack.ps1 [-Service cli|keeper]
-.\Stop-CPAStack.ps1 [-Service cli|keeper]
-.\Restart-CPAStack.ps1 [-Service cli|keeper]
-.\Get-CPAStackStatus.ps1
-.\Update-CPAStack.ps1 [-Service cli|keeper]
-.\Set-CPAStackProxy.ps1 -Set|-Clear|-Show
-.\Uninstall-CPAStack.ps1 [-Purge]
+.\start.ps1 [cli|keeper]
+.\stop.ps1 [cli|keeper]
+.\restart.ps1 [cli|keeper]
+.\status.ps1
+.\update.ps1 [cli|keeper]
+.\proxy.ps1 set|clear|show
+.\uninstall.ps1 [--purge]
 ```
+
+无服务参数时，`start`、`stop`、`restart`、`update` 操作 CPA 和 Keeper 全部服务。服务名仅接受 `cli`、`keeper` 或默认的全部服务，和 macOS 的命令语义一致。`--purge` 需要输入 `DELETE`；PowerShell 参数实现同样接受 `-Purge` 作为等价别名，便于 Windows 管理习惯。
 
 停止操作先写停用标记，再 `Stop-ScheduledTask`，从而避免任务重试。启动/重启操作删除标记并 `Start-ScheduledTask`。卸载才删除任务；`-Purge` 要求输入精确的 `DELETE`，才删除整个运行目录。
 
@@ -192,4 +194,4 @@ C:\ProgramData\CPAStack\logs\cpa-usage-keeper.err.log
 - 防火墙规则创建与删除；
 - 安装/更新的 dry-run，保证不写真实任务或防火墙。
 
-Windows x64 验收标准：在干净的管理员 PowerShell 中执行 `Install-CPAStack.ps1` 后，两个任务在重启且无人登录时启动，CPA 可在 `127.0.0.1:8317` 访问，Keeper 可在本机 18080 访问；认证、数据库和敏感配置不出现在仓库；失败更新保持旧版本可用。
+Windows x64 验收标准：在干净的管理员 PowerShell 中执行 `install.ps1` 后，两个任务在重启且无人登录时启动，CPA 可在 `127.0.0.1:8317` 访问，Keeper 可在本机 18080 访问；认证、数据库和敏感配置不出现在仓库；失败更新保持旧版本可用。
