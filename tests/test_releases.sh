@@ -18,4 +18,5 @@ assert_eq "$old_link" "$(readlink "$TMP_ROOT/current/cli-proxy-api")"
 target=cli
 activate_release cli 1.0.0
 assert_eq cli "$target"
+assert_eq ../releases/cli-proxy-api/1.0.0 "$(readlink "$TMP_ROOT/current/cli-proxy-api")"
 printf 'PASS releases\n'

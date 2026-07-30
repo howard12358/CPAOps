@@ -74,9 +74,14 @@ activate_release() (
   target="$root/releases/$service/$version"
   [ -x "$target/$(release_binary "$service")" ] || return 1
   temporary="$root/current/$service.next"
+  link="$root/current/$service"
   rm -f "$temporary"
   ln -s "../releases/$service/$version" "$temporary"
-  mv -f "$temporary" "$root/current/$service"
+  # BSD mv may follow a destination symlink that points at a directory and
+  # place *.next inside the old release. Remove the link first; the running
+  # process is not restarted until this switch is complete.
+  rm -f "$link"
+  mv -f "$temporary" "$link"
 )
 
 install_release() {
