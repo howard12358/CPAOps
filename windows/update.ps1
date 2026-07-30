@@ -1,0 +1,1 @@
+param([string]$Service='all'); . "$PSScriptRoot\lib\Common.ps1"; . "$PSScriptRoot\lib\GitHubRelease.ps1"; . "$PSScriptRoot\lib\ScheduledTask.ps1"; Assert-Administrator; foreach($s in $(if($Service -eq 'all'){'cli','keeper'}else{$Service})){Write-Host "Checking $s..."; Stop-CPAStackService $s; $v=Install-VerifiedRelease $s; Start-CPAStackService $s; Write-Host "$s $v is active."}
