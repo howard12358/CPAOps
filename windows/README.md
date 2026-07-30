@@ -13,6 +13,8 @@
 .\stop.ps1 [cli|keeper]
 .\restart.ps1 [cli|keeper]
 .\status.ps1
+.\logs.ps1 cli
+.\logs.ps1 keeper
 .\update.ps1 [cli|keeper]
 .\update.ps1 -Rollback -RollbackService cli -Version 1.2.3
 .\proxy.ps1 set|clear|show

@@ -77,6 +77,7 @@ export https_proxy=http://127.0.0.1:7897 http_proxy=http://127.0.0.1:7897 all_pr
 | 重启全部服务 | `sh restart.sh` |
 | 更新全部服务 | `sh update.sh` |
 | 更新 CPA / Keeper | `sh update.sh cli` / `sh update.sh keeper` |
+| 查看 CPA / Keeper 日志 | `sh logs.sh cli` / `sh logs.sh keeper` |
 | 设置代理 | `sh proxy.sh set` |
 | 查看代理是否已配置 | `sh proxy.sh show` |
 | 移除保存的代理 | `sh proxy.sh clear` |
