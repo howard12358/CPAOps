@@ -35,6 +35,7 @@ CPAOps/
 │   └── keeper.env.example
 ├── macos/                         # 现有 macOS 实现，不在本方案改动范围内
 ├── windows/
+│   ├── install.cmd
 │   ├── install.ps1
 │   ├── start.ps1
 │   ├── stop.ps1
@@ -55,7 +56,7 @@ CPAOps/
 └── tests/windows/
 ```
 
-脚本全部以 PowerShell 5.1 兼容语法编写，并可在 PowerShell 7 运行。Windows 与 macOS 使用相同的运维动词、服务目标和默认行为；仅脚本扩展名不同。文档入口为 `powershell -ExecutionPolicy Bypass -File .\install.ps1`；不要求修改机器的系统执行策略。
+脚本全部以 PowerShell 5.1 兼容语法编写，并可在 PowerShell 7 运行。Windows 与 macOS 使用相同的运维动词、服务目标和默认行为；仅安装入口不同：`install.cmd` 负责首次执行策略引导和 UAC 提升，之后的运维脚本均直接以 `.ps1` 运行。
 
 ## 私有运行目录与 ACL
 
@@ -93,16 +94,17 @@ C:\ProgramData\CPAStack\
 
 ```powershell
 cd .\windows
-powershell -ExecutionPolicy Bypass -File .\install.ps1
+.\install.cmd
 ```
 
 安装器按顺序执行：
 
-1. 检查管理员权限、Windows x64、PowerShell、`schtasks`、`Expand-Archive`、`Get-FileHash`、`Test-NetConnection` 和任务计划程序服务可用。
-2. 创建运行目录和受限 ACL；不覆盖已有 `config.yaml`、`keeper.env`、`auths\` 或 `keeper\app.db`。
-3. 首次缺少配置时，以安全输入框读取 CPA 管理密钥和 Keeper 登录密码，使用模板生成私有配置。CPA 使用 `127.0.0.1:8317`；Keeper 的 `CPA_BASE_URL`、`CPA_PUBLIC_URL` 与 Redis 地址均指向该本机地址。
-4. 加载当前进程代理或已保存代理；两者都不存在时允许粘贴 `export https_proxy=... http_proxy=... all_proxy=...`、`set HTTPS_PROXY=...` 或 PowerShell 环境变量格式。解析器只接受三项代理变量与 `http://`、`https://`、`socks5://` URL，绝不执行粘贴文本。
-5. 下载并校验两个 Release，创建/刷新包装器和 SYSTEM 任务，启动任务，并检查端口和 HTTP 连通性。
+1. `install.cmd` 用临时 `Bypass` 调用 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force`，再请求 UAC 提升启动 `install.ps1`；执行策略只修改当前用户，不修改 LocalMachine。若企业组策略强制限制执行策略，安装器明确报出该限制。
+2. 检查管理员权限、Windows x64、PowerShell、`schtasks`、`Expand-Archive`、`Get-FileHash`、`Test-NetConnection` 和任务计划程序服务可用。
+3. 创建运行目录和受限 ACL；不覆盖已有 `config.yaml`、`keeper.env`、`auths\` 或 `keeper\app.db`。
+4. 首次缺少配置时，以安全输入框读取 CPA 管理密钥和 Keeper 登录密码，使用模板生成私有配置。CPA 使用 `127.0.0.1:8317`；Keeper 的 `CPA_BASE_URL`、`CPA_PUBLIC_URL` 与 Redis 地址均指向该本机地址。
+5. 加载当前进程代理或已保存代理；两者都不存在时允许粘贴 `export https_proxy=... http_proxy=... all_proxy=...`、`set HTTPS_PROXY=...` 或 PowerShell 环境变量格式。解析器只接受三项代理变量与 `http://`、`https://`、`socks5://` URL，绝不执行粘贴文本。
+6. 下载并校验两个 Release，创建/刷新包装器和 SYSTEM 任务，启动任务，并检查端口和 HTTP 连通性。
 
 重复运行安装器不会覆盖私密状态；它会复用配置、重新检查最新版、刷新任务定义并确保服务已启动。
 
