@@ -37,11 +37,11 @@
 - `Assert-WindowsX64`、`Assert-Administrator`、`Get-CPAStackRoot`、`Initialize-CPAStackLayout`。
 - `install.cmd` 设置当前用户的 `RemoteSigned`，检查设置结果、请求 UAC，随后调用 `install.ps1`。
 
-- [ ] 编写失败测试：非 x64 覆盖值必须被拒绝；运行目录必须包含 `config`、`auths`、`keeper`、`releases`、`current`、`logs`、`state`、`tasks`。
+- [x] 编写失败测试：非 x64 覆盖值必须被拒绝；运行目录必须包含 `config`、`auths`、`keeper`、`releases`、`current`、`logs`、`state`、`tasks`。
 - [ ] 在 Windows 执行 `powershell -NoProfile -ExecutionPolicy Bypass -File .\tests\windows\Run-Tests.ps1`，确认因缺少命令而失败。
-- [ ] 实现最小函数与无依赖断言 harness：`Assert-Equal`、`Assert-Throws`、`Assert-Path`。
+- [x] 实现最小函数与无依赖断言 harness：`Assert-Equal`、`Assert-Throws`、`Assert-Path`。
 - [ ] 运行 harness 并确认通过。
-- [ ] 提交：`chore: 初始化 Windows 部署支持`。
+- [x] 提交：`feat(windows): 增加基础校验与测试框架`。
 
 ### 任务 2：配置、ACL、代理和 GitHub token
 
@@ -55,11 +55,11 @@
 - `Initialize-PrivateAcl`、`Initialize-Config`、`Import-CPAStackProxy`、`Set-CPAStackProxy`、`Invoke-GitHubRequest`。
 - `Invoke-GitHubRequest` 先匿名访问；仅在 401/403 时使用已保存 token 重试；交互式 401/403 时才提示并替换 token。
 
-- [ ] 编写失败测试：配置占位符拒绝、`export`/`set` 代理格式解析、`proxy.psd1` 私有路径、注入 HTTP 客户端的 403→200 token 重试。
+- [x] 编写失败测试：配置占位符拒绝、`export`/`set` 代理格式解析、`proxy.psd1` 私有路径、注入 HTTP 客户端的 403→200 token 重试。
 - [ ] 运行 Windows harness，确认函数缺失导致失败。
-- [ ] 实现安全解析，禁止 `Invoke-Expression`；将 `proxy.psd1`、`github-token` 存于 `config`，并设置 SYSTEM/Administrators 专属 ACL。
+- [x] 实现安全解析，禁止 `Invoke-Expression`；将 `proxy.psd1`、`github-token` 存于 `config`，并设置 SYSTEM/Administrators 专属 ACL。
 - [ ] 重跑测试并确认通过。
-- [ ] 提交：`feat: 增加 Windows 私有配置和网络辅助函数`。
+- [x] 提交：`feat(windows): 增加配置与网络辅助函数`。
 
 ### 任务 3：校验下载、版本激活与回滚原语
 
@@ -73,9 +73,9 @@
 - `Get-LatestRelease`、`Install-VerifiedRelease`、`Set-CurrentRelease`、`Restore-PreviousRelease`。
 - `cli` 对应 `CLIProxyAPI_<version>_windows_amd64.zip` / `cli-proxy-api.exe`；`keeper` 对应 `cpa-usage-keeper_v<version>_windows_amd64.zip` / `cpa-usage-keeper.exe`。
 
-- [ ] 使用本地 zip fixture 编写失败测试：checksum 不符必须保持 `current`；有效二进制创建 `current` junction；恢复必须回到旧版本。
+- [x] 使用本地 zip fixture 编写失败测试：checksum 不符必须保持 `current`；有效二进制创建 `current` junction；恢复必须回到旧版本。
 - [ ] 运行测试，确认接口缺失。
-- [ ] 实现 SHA-256 比对、临时解压、二进制自检、`current.next`/`current.previous` junction 切换和仅限已验证版本的回滚。
+- [x] 实现 SHA-256 比对、临时解压、二进制自检、`current.next`/`current.previous` junction 切换和仅限已验证版本的回滚。
 - [ ] 重跑测试并确认通过。
 - [ ] 提交：`feat: 增加 Windows 已校验版本激活`。
 
