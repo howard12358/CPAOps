@@ -91,9 +91,9 @@
 
 - `Register-CPAStackTasks`、`Start-CPAStackService`、`Stop-CPAStackService`、`Get-CPAStackServiceStatus`、`Set-CPAStackFirewall`。
 
-- [ ] 使用可注入的任务计划/防火墙适配器编写失败测试：服务目标解析、停用标记、SYSTEM `AtStartup` 设置、Keeper 入站阻止规则。
+- [x] 使用可注入的任务计划/防火墙适配器编写失败测试：服务目标解析、停用标记、SYSTEM `AtStartup` 设置、Keeper 入站阻止规则。
 - [ ] 运行 harness，确认接口缺失。
-- [ ] 实现任务注册、包装器日志重定向、停用标记、启停、状态、代理设置/清除/查看、卸载与受保护的 `--purge`/`-Purge`。
+- [x] 实现任务注册、包装器日志重定向、停用标记、启停、状态、代理设置/清除/查看、卸载与受保护的 `--purge`/`-Purge`。
 - [ ] 重跑测试并确认通过。
 - [ ] 提交：`feat: 增加 Windows 服务生命周期命令`。
 
