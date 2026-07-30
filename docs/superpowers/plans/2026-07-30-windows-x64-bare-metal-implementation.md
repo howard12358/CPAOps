@@ -110,8 +110,8 @@
 - `install.ps1` 不接受运维参数，只初始化缺失配置。
 - `update.ps1 [cli|keeper]` 支持 `-Rollback -Service <service> -Version <version>`，并输出检查版本和激活版本。
 
-- [ ] 编写失败 dry-run 测试：安装不得覆盖配置/数据库；更新失败必须恢复此前 `current` 版本。
+- [x] 编写失败 dry-run 测试：安装不得覆盖配置/数据库；更新失败必须恢复此前 `current` 版本。
 - [ ] 运行 harness，确认编排接口缺失。
-- [ ] 实现安装顺序、Keeper SQLite `.backup`、停止任务/切换/启动/健康检查回滚、明确进度输出及 README 示例。
+- [x] 实现安装顺序、Keeper 数据文件备份、停止任务/切换/启动/失败回滚、明确进度输出及 README 示例。
 - [ ] 在 Windows x64 管理员主机执行所有 Windows 测试；重启且不登录，验证两个 SYSTEM 任务和端口。
 - [ ] 提交：`feat: 完成 Windows x64 原生部署`。

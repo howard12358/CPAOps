@@ -156,7 +156,7 @@ PowerShell 运维接口与 macOS 一致：
 
 更新脚本以管理员权限运行：
 
-1. 对 Keeper 使用 SQLite `.backup` 创建一致性备份；
+1. 停止 Keeper 任务后，备份 `app.db` 及可能存在的 `app.db-wal`、`app.db-shm` 文件；Windows 首版不依赖未随系统提供的 `sqlite3.exe`；
 2. 下载、校验、解压和运行 `--help` 自检；
 3. 停止目标任务；
 4. 创建 `current.next` junction，替换当前 junction，并保留 `current.previous`；

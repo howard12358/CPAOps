@@ -7,6 +7,8 @@
 
 仓库只保存部署脚本和配置模板；服务二进制、认证文件、数据库、日志、代理和 GitHub token 都放在独立的私有运行目录，删除仓库不会删除业务数据。
 
+Windows x64 裸机部署说明见 [windows/README.md](windows/README.md)。
+
 ## 支持范围与前置条件
 
 - macOS Apple Silicon：`uname -s` 必须为 `Darwin`，`uname -m` 必须为 `arm64`。
