@@ -15,6 +15,7 @@
 .\status.ps1
 .\logs.ps1 cli
 .\logs.ps1 keeper
+.\open-stack.ps1
 .\update.ps1 [cli|keeper]
 .\update.ps1 -Rollback -RollbackService cli -Version 1.2.3
 .\proxy.ps1 set|clear|show
