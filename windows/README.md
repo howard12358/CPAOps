@@ -15,14 +15,14 @@
 .\status.ps1
 .\logs.ps1 cli
 .\logs.ps1 keeper
-.\open-stack.ps1
+.\stack-path.ps1
 .\update.ps1 [cli|keeper]
 .\update.ps1 -Rollback -RollbackService cli -Version 1.2.3
 .\proxy.ps1 set|clear|show
 .\uninstall.ps1 [-Purge]
 ```
 
-`open-stack.ps1` 只输出运行目录绝对路径，便于自行执行 `cd`。
+`stack-path.ps1` 只输出运行目录绝对路径，便于自行执行 `cd`。
 
 运行数据位于 `C:\ProgramData\CPAStack`。安装会创建 SYSTEM 开机任务，且 Keeper 的 18080 入站访问会被 Windows 防火墙阻止。Windows x64 实机验证命令：
 
