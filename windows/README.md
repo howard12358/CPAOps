@@ -22,6 +22,8 @@
 .\uninstall.ps1 [-Purge]
 ```
 
+`open-stack.ps1` 仅在 Windows Terminal 中运行：它会在当前 Terminal 窗口新建 tab 并进入运行目录，不会创建新终端窗口。
+
 运行数据位于 `C:\ProgramData\CPAStack`。安装会创建 SYSTEM 开机任务，且 Keeper 的 18080 入站访问会被 Windows 防火墙阻止。Windows x64 实机验证命令：
 
 ```powershell
