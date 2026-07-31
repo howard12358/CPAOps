@@ -24,7 +24,7 @@ Windows x64 裸机部署说明见 [windows/README.md](windows/README.md)。
 ```sh
 git clone <本仓库地址>
 cd CPAOps/macos
-sh install.sh
+./install.sh
 ```
 
 首次运行时脚本会：
@@ -38,7 +38,7 @@ sh install.sh
 安装完成后检查状态：
 
 ```sh
-sh status.sh
+./status.sh
 ```
 
 预期会显示两项服务的加载状态、当前版本和端口监听信息。
@@ -69,18 +69,18 @@ export https_proxy=http://127.0.0.1:7897 http_proxy=http://127.0.0.1:7897 all_pr
 
 | 操作 | 命令 |
 | --- | --- |
-| 查看状态 | `sh status.sh` |
-| 启动全部服务 | `sh start.sh` |
-| 启动 CPA / Keeper | `sh start.sh cli` / `sh start.sh keeper` |
-| 停止全部服务 | `sh stop.sh` |
-| 停止 CPA / Keeper | `sh stop.sh cli` / `sh stop.sh keeper` |
-| 重启全部服务 | `sh restart.sh` |
-| 更新全部服务 | `sh update.sh` |
-| 更新 CPA / Keeper | `sh update.sh cli` / `sh update.sh keeper` |
-| 查看 CPA / Keeper 日志 | `sh logs.sh cli` / `sh logs.sh keeper` |
-| 设置代理 | `sh proxy.sh set` |
-| 查看代理是否已配置 | `sh proxy.sh show` |
-| 移除保存的代理 | `sh proxy.sh clear` |
+| 查看状态 | `./status.sh` |
+| 启动全部服务 | `./start.sh` |
+| 启动 CPA / Keeper | `./start.sh cli` / `./start.sh keeper` |
+| 停止全部服务 | `./stop.sh` |
+| 停止 CPA / Keeper | `./stop.sh cli` / `./stop.sh keeper` |
+| 重启全部服务 | `./restart.sh` |
+| 更新全部服务 | `./update.sh` |
+| 更新 CPA / Keeper | `./update.sh cli` / `./update.sh keeper` |
+| 查看 CPA / Keeper 日志 | `./logs.sh cli` / `./logs.sh keeper` |
+| 设置代理 | `./proxy.sh set` |
+| 查看代理是否已配置 | `./proxy.sh show` |
+| 移除保存的代理 | `./proxy.sh clear` |
 
 `stop.sh` 会停止服务并写入停用标记，因此服务不会被 `KeepAlive` 立即拉起；它不会取消登录自启。再次执行 `start.sh` 会清除停用标记。
 
@@ -132,7 +132,7 @@ export https_proxy=http://127.0.0.1:7897 http_proxy=http://127.0.0.1:7897 all_pr
 
 - 将旧 `auths/` 中的认证文件复制到新运行目录的 `auths/`；
 - 使用 `sqlite3 .backup` 对旧 `keeper/app.db` 生成一致性备份，再替换新 `keeper/app.db`；
-- 启动 Keeper 并用 `sh status.sh` 检查端口和日志。
+- 启动 Keeper 并用 `./status.sh` 检查端口和日志。
 
 迁移不会自动删除旧目录。确认新服务稳定后，再自行归档或移除旧环境。
 
@@ -141,13 +141,13 @@ export https_proxy=http://127.0.0.1:7897 http_proxy=http://127.0.0.1:7897 all_pr
 只取消登录自启、保留所有运行数据：
 
 ```sh
-sh uninstall.sh
+./uninstall.sh
 ```
 
 注销服务并删除整个运行目录：
 
 ```sh
-sh uninstall.sh --purge
+./uninstall.sh --purge
 ```
 
 `--purge` 会要求输入 `DELETE`，并会删除配置、认证、数据库、日志、下载版本和备份；确认不再需要数据前不要执行。
@@ -156,7 +156,7 @@ sh uninstall.sh --purge
 
 ```sh
 # 查看服务状态与监听端口
-sh status.sh
+./status.sh
 
 # 查看 CPA 日志
 tail -n 200 -f "$HOME/Library/Application Support/cpa-stack/logs/cli-proxy-api.out.log" \
@@ -167,7 +167,7 @@ tail -n 200 -f "$HOME/Library/Application Support/cpa-stack/logs/cpa-usage-keepe
   "$HOME/Library/Application Support/cpa-stack/logs/cpa-usage-keeper.err.log"
 ```
 
-若安装/更新无法访问 GitHub，先执行 `sh proxy.sh show` 确认代理状态；若 GitHub 返回访问限制，安装器会自动使用已保存 token 或提示输入新 token。
+若安装/更新无法访问 GitHub，先执行 `./proxy.sh show` 确认代理状态；若 GitHub 返回访问限制，安装器会自动使用已保存 token 或提示输入新 token。
 
 ## 开发验证
 
