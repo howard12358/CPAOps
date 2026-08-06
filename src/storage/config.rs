@@ -1,5 +1,6 @@
 use std::fmt;
 use std::fs;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 use serde::{Deserialize, Serialize};
@@ -35,41 +36,45 @@ impl ConfigStore {
         set_private_directory(&self.paths.config)?;
 
         let cpa_config = self.cpa_config_path();
-        if cpa_config.exists() {
+        if !write_private_file_if_absent(
+            &cpa_config,
+            &CPA_CONFIG_TEMPLATE.replace(REQUIRED_PLACEHOLDER, management_key),
+        )? {
             set_private_file(&cpa_config)?;
-        } else {
-            let contents = CPA_CONFIG_TEMPLATE.replace(REQUIRED_PLACEHOLDER, management_key);
-            write_private_file(&cpa_config, &contents)?;
         }
 
         let keeper_env = self.keeper_env_path();
-        if keeper_env.exists() {
+        let keeper_contents = KEEPER_ENV_TEMPLATE
+            .replace(
+                "CPA_MANAGEMENT_KEY=__REQUIRED__",
+                &format!("CPA_MANAGEMENT_KEY={management_key}"),
+            )
+            .replace(
+                "LOGIN_PASSWORD=__REQUIRED__",
+                &format!("LOGIN_PASSWORD={keeper_login_password}"),
+            );
+        if !write_private_file_if_absent(&keeper_env, &keeper_contents)? {
             set_private_file(&keeper_env)?;
-        } else {
-            let contents = KEEPER_ENV_TEMPLATE
-                .replace(
-                    "CPA_MANAGEMENT_KEY=__REQUIRED__",
-                    &format!("CPA_MANAGEMENT_KEY={management_key}"),
-                )
-                .replace(
-                    "LOGIN_PASSWORD=__REQUIRED__",
-                    &format!("LOGIN_PASSWORD={keeper_login_password}"),
-                );
-            write_private_file(&keeper_env, &contents)?;
         }
 
         Ok(())
     }
 
     pub fn validate(&self) -> Result<(), AppError> {
-        for path in [self.cpa_config_path(), self.keeper_env_path()] {
-            let contents = fs::read_to_string(&path)
-                .map_err(|_| AppError::State("私密配置文件不存在或无法读取".into()))?;
-            if contents.contains(REQUIRED_PLACEHOLDER) {
-                return Err(AppError::State("私密配置包含必填占位符".into()));
-            }
-            ensure_private_file(&path)?;
+        let cpa_config = self.cpa_config_path();
+        let cpa_contents = read_private_config(&cpa_config)?;
+        if cpa_contents.contains(REQUIRED_PLACEHOLDER) {
+            return Err(AppError::State("私密配置包含必填占位符".into()));
         }
+        validate_cpa_port(&cpa_contents)?;
+
+        let keeper_env = self.keeper_env_path();
+        let keeper_contents = read_private_config(&keeper_env)?;
+        if keeper_contents.contains(REQUIRED_PLACEHOLDER) {
+            return Err(AppError::State("私密配置包含必填占位符".into()));
+        }
+        validate_keeper_port(&keeper_contents)?;
+
         Ok(())
     }
 
@@ -108,9 +113,21 @@ impl ConfigStore {
     }
 
     pub fn token_present(&self) -> bool {
-        fs::read_to_string(self.token_path())
+        let path = self.token_path();
+        if ensure_private_file(&path).is_err() {
+            return false;
+        }
+        fs::read_to_string(path)
             .map(|token| !token.trim().is_empty())
             .unwrap_or(false)
+    }
+
+    pub fn save_token(&self, token: &str) -> Result<(), AppError> {
+        validate_secret_input(token)?;
+        fs::create_dir_all(&self.paths.config)
+            .map_err(|error| AppError::Permission(format!("无法创建配置目录：{error}")))?;
+        set_private_directory(&self.paths.config)?;
+        write_private_file(&self.token_path(), token)
     }
 
     fn cpa_config_path(&self) -> PathBuf {
@@ -128,6 +145,43 @@ impl ConfigStore {
     fn token_path(&self) -> PathBuf {
         self.paths.config.join("github-token")
     }
+}
+
+#[derive(Deserialize)]
+struct CpaConfig {
+    port: u16,
+}
+
+fn read_private_config(path: &Path) -> Result<String, AppError> {
+    let contents = fs::read_to_string(path)
+        .map_err(|_| AppError::State("私密配置文件不存在或无法读取".into()))?;
+    ensure_private_file(path)?;
+    Ok(contents)
+}
+
+fn validate_cpa_port(contents: &str) -> Result<(), AppError> {
+    let config: CpaConfig =
+        serde_yaml::from_str(contents).map_err(|_| AppError::State("CPA 配置 port 无效".into()))?;
+    if config.port == 0 {
+        return Err(AppError::State("CPA 配置 port 必须是 1 到 65535".into()));
+    }
+    Ok(())
+}
+
+fn validate_keeper_port(contents: &str) -> Result<(), AppError> {
+    let app_port = contents
+        .lines()
+        .filter_map(|line| line.split_once('='))
+        .find_map(|(key, value)| (key == "APP_PORT").then_some(value))
+        .ok_or_else(|| AppError::State("Keeper 配置缺少 APP_PORT".into()))?
+        .parse::<u16>()
+        .map_err(|_| AppError::State("Keeper 配置 APP_PORT 无效".into()))?;
+    if app_port == 0 {
+        return Err(AppError::State(
+            "Keeper 配置 APP_PORT 必须是 1 到 65535".into(),
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Clone)]
@@ -263,10 +317,44 @@ fn validate_proxy_url(value: &str) -> Result<String, AppError> {
     Ok(value.into())
 }
 
+fn write_private_file_if_absent(path: &Path, contents: &str) -> Result<bool, AppError> {
+    match open_private_file(path, true) {
+        Ok(file) => {
+            write_contents(file, path, contents)?;
+            Ok(true)
+        }
+        Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => Ok(false),
+        Err(error) => Err(AppError::Permission(format!("无法写入私密配置：{error}"))),
+    }
+}
+
 fn write_private_file(path: &Path, contents: &str) -> Result<(), AppError> {
-    fs::write(path, contents)
+    let file = open_private_file(path, false)
+        .map_err(|error| AppError::Permission(format!("无法写入私密配置：{error}")))?;
+    write_contents(file, path, contents)
+}
+
+fn write_contents(mut file: fs::File, path: &Path, contents: &str) -> Result<(), AppError> {
+    file.write_all(contents.as_bytes())
         .map_err(|error| AppError::Permission(format!("无法写入私密配置：{error}")))?;
     set_private_file(path)
+}
+
+fn open_private_file(path: &Path, create_new: bool) -> std::io::Result<fs::File> {
+    let mut options = fs::OpenOptions::new();
+    options.write(true);
+    if create_new {
+        options.create_new(true);
+    } else {
+        options.create(true).truncate(true);
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+
+        options.mode(0o600);
+    }
+    options.open(path)
 }
 
 #[cfg(unix)]

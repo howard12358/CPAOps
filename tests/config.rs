@@ -22,6 +22,16 @@ fn store() -> (PathBuf, RuntimeStore, ConfigStore) {
     (root, runtime, config)
 }
 
+fn write_private_file(path: &std::path::Path, contents: &str) {
+    fs::write(path, contents).unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+
+        fs::set_permissions(path, fs::Permissions::from_mode(0o600)).unwrap();
+    }
+}
+
 #[test]
 fn layout_creates_all_runtime_directories() {
     let (root, runtime, _) = store();
@@ -93,16 +103,14 @@ fn initialization_secures_existing_config_without_replacing_it() {
 fn validation_rejects_required_placeholder() {
     let (root, runtime, config) = store();
     runtime.ensure_layout().unwrap();
-    fs::write(
-        runtime.paths().config.join("config.yaml"),
+    write_private_file(
+        &runtime.paths().config.join("config.yaml"),
         "remote-management:\n  secret-key: __REQUIRED__\n",
-    )
-    .unwrap();
-    fs::write(
-        runtime.paths().config.join("keeper.env"),
+    );
+    write_private_file(
+        &runtime.paths().config.join("keeper.env"),
         "CPA_MANAGEMENT_KEY=__REQUIRED__\n",
-    )
-    .unwrap();
+    );
 
     assert!(
         config
@@ -110,6 +118,48 @@ fn validation_rejects_required_placeholder() {
             .unwrap_err()
             .to_string()
             .contains("占位符")
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn validation_rejects_cpa_port_outside_the_allowed_range() {
+    let (root, runtime, config) = store();
+    runtime.ensure_layout().unwrap();
+    write_private_file(
+        &runtime.paths().config.join("config.yaml"),
+        "port: 0\nremote-management:\n  secret-key: configured\n",
+    );
+    write_private_file(
+        &runtime.paths().config.join("keeper.env"),
+        "CPA_MANAGEMENT_KEY=configured\nAPP_PORT=18080\n",
+    );
+
+    assert!(config.validate().unwrap_err().to_string().contains("port"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn validation_rejects_keeper_port_outside_the_allowed_range() {
+    let (root, runtime, config) = store();
+    runtime.ensure_layout().unwrap();
+    write_private_file(
+        &runtime.paths().config.join("config.yaml"),
+        "port: 8317\nremote-management:\n  secret-key: configured\n",
+    );
+    write_private_file(
+        &runtime.paths().config.join("keeper.env"),
+        "CPA_MANAGEMENT_KEY=configured\nAPP_PORT=65536\n",
+    );
+
+    assert!(
+        config
+            .validate()
+            .unwrap_err()
+            .to_string()
+            .contains("APP_PORT")
     );
 
     fs::remove_dir_all(root).unwrap();
@@ -159,10 +209,29 @@ fn proxy_rejects_unknown_key_and_unsupported_scheme() {
 fn token_status_and_redacted_display_do_not_reveal_secret() {
     let (root, runtime, config) = store();
     runtime.ensure_layout().unwrap();
-    fs::write(runtime.paths().config.join("github-token"), "token-value").unwrap();
+    write_private_file(&runtime.paths().config.join("github-token"), "token-value");
 
     assert!(config.token_present());
     assert_eq!(Redacted::new("token-value").to_string(), "已配置");
 
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(unix)]
+#[test]
+fn saving_token_creates_a_private_file() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let (root, runtime, config) = store();
+    runtime.ensure_layout().unwrap();
+
+    config.save_token("token-value").unwrap();
+
+    let token_path = runtime.paths().config.join("github-token");
+    assert!(config.token_present());
+    assert_eq!(
+        fs::metadata(token_path).unwrap().permissions().mode() & 0o777,
+        0o600
+    );
     fs::remove_dir_all(root).unwrap();
 }
