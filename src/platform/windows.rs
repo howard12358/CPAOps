@@ -97,6 +97,7 @@ impl<R: CommandRunner> WindowsPlatform<R> {
                 OsString::from("/grant"),
                 OsString::from(SYSTEM_SID),
                 OsString::from(ADMINISTRATORS_SID),
+                OsString::from("/T"),
             ],
         )
     }
