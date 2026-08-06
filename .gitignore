@@ -11,3 +11,5 @@ downloads/
 config/*.yaml
 config/*.env
 !config/*.example
+target
+.idea/
