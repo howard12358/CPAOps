@@ -1,3 +1,4 @@
+use std::env;
 use std::ffi::OsString;
 use std::path::Path;
 use std::process::Command;
@@ -63,6 +64,12 @@ pub struct ProcessCommandRunner;
 
 impl CommandRunner for ProcessCommandRunner {
     fn run(&self, program: &str, args: &[OsString]) -> Result<CommandOutput, AppError> {
+        if cfg!(debug_assertions)
+            && env::var_os("CPACTL_SMOKE_NO_PLATFORM_COMMANDS").as_deref()
+                == Some(std::ffi::OsStr::new("1"))
+        {
+            return Ok(CommandOutput::success());
+        }
         let output = Command::new(program)
             .args(args)
             .output()

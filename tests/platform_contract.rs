@@ -7,6 +7,8 @@ use base64::Engine;
 use cpactl::domain::error::AppError;
 use cpactl::domain::runtime::RuntimePaths;
 use cpactl::domain::service::Service;
+#[cfg(debug_assertions)]
+use cpactl::platform::ProcessCommandRunner;
 use cpactl::platform::{CommandOutput, CommandRunner, MacosPlatform, Platform, WindowsPlatform};
 use tempfile::TempDir;
 
@@ -58,6 +60,18 @@ fn powershell_value(call: &[String], flag: &str) -> Option<String> {
         .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
         .collect::<Vec<_>>();
     String::from_utf16(&utf16).ok()
+}
+
+#[test]
+#[cfg(debug_assertions)]
+fn debug_smoke_environment_does_not_execute_platform_commands() {
+    temp_env::with_var("CPACTL_SMOKE_NO_PLATFORM_COMMANDS", Some("1"), || {
+        let output = ProcessCommandRunner
+            .run("cpactl-smoke-command-must-not-run", &[])
+            .unwrap();
+
+        assert!(output.success);
+    });
 }
 
 impl CommandRunner for RecordingRunner {

@@ -85,7 +85,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             Command::Update { service } => self.update(service.as_deref()),
             Command::Rollback { service, version } => self.rollback(service, version),
             Command::Path => Ok(Output::success_with_data(
-                "运行目录",
+                self.paths.root.display().to_string(),
                 json!({ "root": self.paths.root.display().to_string() }),
             )),
             Command::Status => self.status(),

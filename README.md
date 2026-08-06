@@ -48,3 +48,21 @@ cargo clippy --all-targets -- -D warnings
 cargo test
 sh tests/run.sh
 ```
+
+## 实机冒烟与 CI
+
+在没有注册 CPA Stack 服务的测试机器上，可执行不下载 Release、不启动第三方服务的冒烟检查：
+
+```sh
+sh tests/smoke/macos.sh
+```
+
+Windows 请在提升权限的管理员 PowerShell 中执行：
+
+```powershell
+./tests/smoke/windows.ps1
+```
+
+两个脚本均使用临时 `--root`；通过保留的本地 TCP 0 端口代理让安装在配置初始化后停止，并检查路径、代理脱敏、状态 JSON、停止标记、日志读取和非交互 `--purge` 拒绝。它们使用调试构建专用的系统命令隔离开关，因此不会查询或操作本机 8317/18080 端口、服务注册或默认运行目录；发布构建不会启用该开关。
+
+GitHub Actions 在 macOS Apple Silicon 和 Windows x64 上分别运行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 与 `cargo test`。
