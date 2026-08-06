@@ -1,10 +1,12 @@
 use serde::Serialize;
+use serde_json::Value;
 
 #[derive(Debug, Serialize)]
 pub struct Output {
     pub ok: bool,
     pub code: u8,
     pub message: String,
+    pub data: Value,
 }
 
 impl Output {
@@ -13,6 +15,16 @@ impl Output {
             ok: true,
             code: 0,
             message: message.into(),
+            data: Value::Null,
+        }
+    }
+
+    pub fn success_with_data(message: impl Into<String>, data: Value) -> Self {
+        Self {
+            ok: true,
+            code: 0,
+            message: message.into(),
+            data,
         }
     }
 
@@ -21,6 +33,7 @@ impl Output {
             ok: false,
             code,
             message: message.into(),
+            data: Value::Null,
         }
     }
 
