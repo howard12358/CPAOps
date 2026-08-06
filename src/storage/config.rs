@@ -117,13 +117,7 @@ impl ConfigStore {
     }
 
     pub fn token_present(&self) -> bool {
-        let path = self.token_path();
-        if ensure_private_file(&path).is_err() {
-            return false;
-        }
-        fs::read_to_string(path)
-            .map(|token| !token.trim().is_empty())
-            .unwrap_or(false)
+        self.load_token().ok().flatten().is_some()
     }
 
     pub fn save_token(&self, token: &str) -> Result<(), AppError> {
@@ -132,6 +126,21 @@ impl ConfigStore {
             .map_err(|error| AppError::Permission(format!("无法创建配置目录：{error}")))?;
         set_private_directory(&self.paths.config)?;
         write_private_file(&self.token_path(), token)
+    }
+
+    pub fn load_token(&self) -> Result<Option<String>, AppError> {
+        let path = self.token_path();
+        if !path.exists() {
+            return Ok(None);
+        }
+        ensure_private_file(&path)?;
+        let token = fs::read_to_string(path)
+            .map_err(|_| AppError::State("GitHub Token 无法读取".into()))?;
+        let token = token.trim();
+        if token.is_empty() {
+            return Ok(None);
+        }
+        Ok(Some(token.into()))
     }
 
     fn cpa_config_path(&self) -> PathBuf {
@@ -264,6 +273,16 @@ impl ProxyConfig {
 
     pub const fn redacted_summary(&self) -> &'static str {
         "已配置代理"
+    }
+
+    pub(crate) fn urls(&self) -> impl Iterator<Item = (&str, &str)> {
+        [
+            ("https", self.https_proxy.as_deref()),
+            ("http", self.http_proxy.as_deref()),
+            ("all", self.all_proxy.as_deref()),
+        ]
+        .into_iter()
+        .filter_map(|(scheme, url)| url.map(|url| (scheme, url)))
     }
 
     fn validate(&self) -> Result<(), AppError> {
