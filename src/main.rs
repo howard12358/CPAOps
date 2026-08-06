@@ -1,16 +1,12 @@
-mod cli;
-mod domain;
-mod output;
-
 use clap::Parser;
-use cli::Cli;
-use domain::error::AppError;
-use output::Output;
+use cpactl::cli::{Cli, Command};
+use cpactl::domain::error::AppError;
+use cpactl::output::Output;
 
 fn main() {
     let cli = Cli::parse();
     let result: Result<(), AppError> = match cli.command {
-        cli::Command::Status => Err(AppError::State(
+        Command::Status => Err(AppError::State(
             "尚未安装 CPA Stack，请先运行 cpactl install".into(),
         )),
         _ => Err(AppError::State("该命令尚未实现".into())),
