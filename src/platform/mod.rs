@@ -6,8 +6,10 @@ use crate::domain::error::AppError;
 use crate::domain::service::Service;
 
 pub mod macos;
+pub mod windows;
 
 pub use macos::MacosPlatform;
+pub use windows::WindowsPlatform;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommandOutput {
