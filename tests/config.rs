@@ -1,17 +1,21 @@
 use std::fs;
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cpactl::domain::runtime::RuntimePaths;
 use cpactl::storage::config::{ConfigStore, ProxyConfig, Redacted};
 use cpactl::storage::filesystem::RuntimeStore;
 
+static TEST_ROOT_COUNTER: AtomicU64 = AtomicU64::new(0);
+
 fn test_root() -> PathBuf {
     let nonce = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    std::env::temp_dir().join(format!("cpactl-config-test-{nonce}"))
+    let counter = TEST_ROOT_COUNTER.fetch_add(1, Ordering::Relaxed);
+    std::env::temp_dir().join(format!("cpactl-config-test-{nonce}-{counter}"))
 }
 
 fn store() -> (PathBuf, RuntimeStore, ConfigStore) {
@@ -161,6 +165,24 @@ fn validation_rejects_keeper_port_outside_the_allowed_range() {
             .to_string()
             .contains("APP_PORT")
     );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn validation_rejects_duplicate_keeper_app_port() {
+    let (root, runtime, config) = store();
+    runtime.ensure_layout().unwrap();
+    write_private_file(
+        &runtime.paths().config.join("config.yaml"),
+        "port: 8317\nremote-management:\n  secret-key: configured\n",
+    );
+    write_private_file(
+        &runtime.paths().config.join("keeper.env"),
+        "CPA_MANAGEMENT_KEY=configured\nAPP_PORT=18080\nAPP_PORT=18081\n",
+    );
+
+    assert!(config.validate().unwrap_err().to_string().contains("重复"));
 
     fs::remove_dir_all(root).unwrap();
 }

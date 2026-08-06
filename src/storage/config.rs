@@ -2,6 +2,8 @@ use std::fmt;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+#[cfg(unix)]
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use serde::{Deserialize, Serialize};
 use url::Url;
@@ -12,6 +14,8 @@ use crate::domain::runtime::RuntimePaths;
 const REQUIRED_PLACEHOLDER: &str = "__REQUIRED__";
 const CPA_CONFIG_TEMPLATE: &str = include_str!("../../config/cpa.config.yaml.example");
 const KEEPER_ENV_TEMPLATE: &str = include_str!("../../config/keeper.env.example");
+#[cfg(unix)]
+static TEMPORARY_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 #[derive(Clone, Debug)]
 pub struct ConfigStore {
@@ -169,10 +173,13 @@ fn validate_cpa_port(contents: &str) -> Result<(), AppError> {
 }
 
 fn validate_keeper_port(contents: &str) -> Result<(), AppError> {
-    let app_port = contents
-        .lines()
-        .filter_map(|line| line.split_once('='))
-        .find_map(|(key, value)| (key == "APP_PORT").then_some(value))
+    let mut app_port = None;
+    for (key, value) in contents.lines().filter_map(|line| line.split_once('=')) {
+        if key == "APP_PORT" && app_port.replace(value).is_some() {
+            return Err(AppError::State("Keeper 配置包含重复 APP_PORT".into()));
+        }
+    }
+    let app_port = app_port
         .ok_or_else(|| AppError::State("Keeper 配置缺少 APP_PORT".into()))?
         .parse::<u16>()
         .map_err(|_| AppError::State("Keeper 配置 APP_PORT 无效".into()))?;
@@ -328,10 +335,48 @@ fn write_private_file_if_absent(path: &Path, contents: &str) -> Result<bool, App
     }
 }
 
+#[cfg(not(unix))]
 fn write_private_file(path: &Path, contents: &str) -> Result<(), AppError> {
     let file = open_private_file(path, false)
         .map_err(|error| AppError::Permission(format!("无法写入私密配置：{error}")))?;
     write_contents(file, path, contents)
+}
+
+#[cfg(unix)]
+fn write_private_file(path: &Path, contents: &str) -> Result<(), AppError> {
+    let directory = path
+        .parent()
+        .ok_or_else(|| AppError::Internal("私密配置路径无效".into()))?;
+    let file_name = path
+        .file_name()
+        .ok_or_else(|| AppError::Internal("私密配置路径无效".into()))?
+        .to_string_lossy();
+
+    for _ in 0..16 {
+        let counter = TEMPORARY_FILE_COUNTER.fetch_add(1, Ordering::Relaxed);
+        let temporary_path = directory.join(format!(
+            ".{file_name}.{}.{}.tmp",
+            std::process::id(),
+            counter
+        ));
+        match open_private_file(&temporary_path, true) {
+            Ok(file) => {
+                if let Err(error) = write_contents(file, &temporary_path, contents) {
+                    let _ = fs::remove_file(&temporary_path);
+                    return Err(error);
+                }
+                if let Err(error) = fs::rename(&temporary_path, path) {
+                    let _ = fs::remove_file(&temporary_path);
+                    return Err(AppError::Permission(format!("无法替换私密配置：{error}")));
+                }
+                return Ok(());
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(AppError::Permission(format!("无法写入私密配置：{error}"))),
+        }
+    }
+
+    Err(AppError::Internal("无法创建私密配置临时文件".into()))
 }
 
 fn write_contents(mut file: fs::File, path: &Path, contents: &str) -> Result<(), AppError> {
