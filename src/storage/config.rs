@@ -64,6 +64,10 @@ impl ConfigStore {
         Ok(())
     }
 
+    pub fn is_initialized(&self) -> bool {
+        self.cpa_config_path().is_file() && self.keeper_env_path().is_file()
+    }
+
     pub fn validate(&self) -> Result<(), AppError> {
         let cpa_config = self.cpa_config_path();
         let cpa_contents = read_private_config(&cpa_config)?;

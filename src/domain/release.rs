@@ -186,6 +186,17 @@ impl ReleaseTransaction {
         self.store.set_current(service, target)
     }
 
+    /// 返回本机已经完成二进制验证的版本目录；未验证目录绝不能被激活或复用。
+    pub fn verified_release(
+        &self,
+        service: Service,
+        version: &str,
+    ) -> Result<Option<PathBuf>, AppError> {
+        let target = self.unverified_release_directory(service, version)?;
+        let binary = self.binary_name(service);
+        Ok((target.join(".verified").is_file() && target.join(binary).is_file()).then_some(target))
+    }
+
     /// 只将已校验、可执行的内容写入 releases，current 的切换由 activate 负责。
     pub fn stage_verified_archive(
         &self,
@@ -300,15 +311,8 @@ impl ReleaseTransaction {
     }
 
     fn release_directory(&self, service: Service, version: &str) -> Result<PathBuf, AppError> {
-        let target = self.unverified_release_directory(service, version)?;
-        let binary = self.binary_name(service);
-        if !target.join(".verified").is_file() || !target.join(binary).is_file() {
-            return Err(AppError::State(format!(
-                "已验证版本不存在或缺少二进制：{}",
-                target.display()
-            )));
-        }
-        Ok(target)
+        self.verified_release(service, version)?
+            .ok_or_else(|| AppError::State(format!("已验证版本不存在或缺少二进制：{version}")))
     }
 
     fn unverified_release_directory(

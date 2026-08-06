@@ -7,32 +7,83 @@ use serde_json::{Value, json};
 
 use crate::cli::{Command, ProxyAction};
 use crate::domain::error::AppError;
+use crate::domain::release::{
+    ReleaseMetadata, ReleasePlan, ReleasePlatform, ReleaseTransaction, ServiceLifecycle,
+};
 use crate::domain::runtime::RuntimePaths;
 use crate::domain::service::{Service, ServiceCatalog};
+use crate::github::GithubClient;
 use crate::output::Output;
 use crate::platform::{Platform, ServiceStatus};
 use crate::storage::config::{ConfigStore, ProxyConfig};
+use crate::storage::filesystem::RuntimeStore;
 
-pub struct App<P> {
+pub trait ReleaseProvider {
+    fn latest_release(&self, service: Service) -> Result<ReleaseMetadata, AppError>;
+    fn download(&self, url: &str, destination: &Path) -> Result<PathBuf, AppError>;
+}
+
+impl ReleaseProvider for GithubClient {
+    fn latest_release(&self, service: Service) -> Result<ReleaseMetadata, AppError> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| AppError::Internal("无法初始化 GitHub 请求运行时".into()))?;
+        runtime.block_on(GithubClient::latest_release(self, service))
+    }
+
+    fn download(&self, url: &str, destination: &Path) -> Result<PathBuf, AppError> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| AppError::Internal("无法初始化 GitHub 请求运行时".into()))?;
+        runtime.block_on(GithubClient::download(self, url, destination))
+    }
+}
+
+pub struct App<P, R = GithubClient> {
     paths: RuntimePaths,
     platform: P,
     config: ConfigStore,
+    release_provider: R,
+    release_platform: Option<ReleasePlatform>,
 }
 
-impl<P: Platform> App<P> {
+impl<P: Platform> App<P, GithubClient> {
     pub fn new(paths: RuntimePaths, platform: P) -> Self {
+        let config = ConfigStore::new(paths.clone());
+        Self {
+            release_provider: GithubClient::new(config.clone())
+                .expect("固定 GitHub API 地址必须有效"),
+            config,
+            paths,
+            platform,
+            release_platform: None,
+        }
+    }
+}
+
+impl<P: Platform, R: ReleaseProvider> App<P, R> {
+    pub fn with_release_provider(
+        paths: RuntimePaths,
+        platform: P,
+        release_provider: R,
+        release_platform: ReleasePlatform,
+    ) -> Self {
         Self {
             config: ConfigStore::new(paths.clone()),
             paths,
             platform,
+            release_provider,
+            release_platform: Some(release_platform),
         }
     }
 
     pub fn run(&self, command: &Command) -> Result<Output, AppError> {
         match command {
-            Command::Install | Command::Update { .. } | Command::Rollback { .. } => {
-                Err(AppError::State("该命令将在后续版本中实现".into()))
-            }
+            Command::Install => self.install(),
+            Command::Update { service } => self.update(service.as_deref()),
+            Command::Rollback { service, version } => self.rollback(service, version),
             Command::Path => Ok(Output::success_with_data(
                 "运行目录",
                 json!({ "root": self.paths.root.display().to_string() }),
@@ -69,6 +120,103 @@ impl<P: Platform> App<P> {
                 "services": services,
             }),
         ))
+    }
+
+    fn install(&self) -> Result<Output, AppError> {
+        self.platform.check_supported()?;
+        self.platform.check_permissions()?;
+        RuntimeStore::new(self.paths.clone()).ensure_layout()?;
+        self.initialize_config_for_install()?;
+        self.config.validate()?;
+
+        let releases = [Service::Cli, Service::Keeper]
+            .into_iter()
+            .map(|service| {
+                self.prepare_release(service)
+                    .map(|version| (service, version))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        self.platform.install_services()?;
+        let results = releases
+            .into_iter()
+            .map(|(service, version)| {
+                workflow_result(service, self.activate_release(service, &version))
+            })
+            .collect();
+        workflow_output("安装", results)
+    }
+
+    fn update(&self, service_name: Option<&str>) -> Result<Output, AppError> {
+        self.prepare_lifecycle()?;
+        self.config.validate()?;
+        let services = resolve_services(service_name)?;
+        let mut results = Vec::with_capacity(services.len());
+        for service in services {
+            let result = self
+                .prepare_release(service)
+                .and_then(|version| self.activate_release(service, &version));
+            results.push(workflow_result(service, result));
+        }
+        workflow_output("更新", results)
+    }
+
+    fn rollback(&self, service_name: &str, version: &str) -> Result<Output, AppError> {
+        self.prepare_lifecycle()?;
+        let service = ServiceCatalog::resolve(service_name)?;
+        self.activate_release(service, version)?;
+        Ok(Output::success_with_data(
+            "版本已回滚",
+            json!({ "service": service.key(), "version": version }),
+        ))
+    }
+
+    fn prepare_release(&self, service: Service) -> Result<String, AppError> {
+        let metadata = self.release_provider.latest_release(service)?;
+        let release_platform = self
+            .release_platform
+            .map(Ok)
+            .unwrap_or_else(ReleasePlatform::current)?;
+        let plan = ReleasePlan::from_metadata(service, &metadata, release_platform)?;
+        let transaction = ReleaseTransaction::new(self.paths.clone());
+        if transaction.verified_release(service, &plan.tag)?.is_some() {
+            return Ok(plan.tag);
+        }
+
+        let asset_name = release_asset_name(&plan.asset.name)?;
+        let checksum_name = release_asset_name(&plan.checksums.name)?;
+        let download_directory = self.paths.downloads.join(service.key()).join(&plan.tag);
+        let archive = download_directory.join(asset_name);
+        let checksums = download_directory.join(checksum_name);
+        self.release_provider.download(&plan.asset.url, &archive)?;
+        self.release_provider
+            .download(&plan.checksums.url, &checksums)?;
+        transaction.stage_verified_archive(
+            service,
+            &plan.tag,
+            &archive,
+            &checksums,
+            &plan.asset.name,
+        )?;
+        Ok(plan.tag)
+    }
+
+    fn activate_release(&self, service: Service, version: &str) -> Result<(), AppError> {
+        let transaction = ReleaseTransaction::new(self.paths.clone());
+        let mut lifecycle = PlatformLifecycle {
+            platform: &self.platform,
+        };
+        transaction.activate(service, version, &mut lifecycle)
+    }
+
+    fn initialize_config_for_install(&self) -> Result<(), AppError> {
+        if self.config.is_initialized() {
+            return Ok(());
+        }
+        let management_key = install_secret("CPA_MANAGEMENT_KEY", "请输入 CPA 管理密钥：")?;
+        let keeper_login_password =
+            install_secret("KEEPER_LOGIN_PASSWORD", "请输入 Keeper 登录密码：")?;
+        self.config
+            .initialize(&management_key, &keeper_login_password)
     }
 
     fn status_entry(&self, service: Service) -> Result<Value, AppError> {
@@ -195,6 +343,91 @@ impl<P: Platform> App<P> {
         self.platform.check_supported()?;
         self.platform.check_permissions()
     }
+}
+
+struct PlatformLifecycle<'a, P> {
+    platform: &'a P,
+}
+
+impl<P: Platform> ServiceLifecycle for PlatformLifecycle<'_, P> {
+    fn is_running(&mut self, service: Service) -> Result<bool, AppError> {
+        Ok(self.platform.status(service)?.listening)
+    }
+
+    fn start(&mut self, service: Service) -> Result<(), AppError> {
+        self.platform.start(service)
+    }
+
+    fn stop(&mut self, service: Service) -> Result<(), AppError> {
+        self.platform.stop(service)
+    }
+
+    fn restart(&mut self, service: Service) -> Result<(), AppError> {
+        self.platform.restart(service)
+    }
+
+    fn is_healthy(&mut self, service: Service) -> Result<bool, AppError> {
+        self.platform.is_port_listening(service)
+    }
+}
+
+fn workflow_result(service: Service, result: Result<(), AppError>) -> Value {
+    match result {
+        Ok(()) => json!({ "service": service.key(), "ok": true }),
+        Err(error) => json!({
+            "service": service.key(),
+            "ok": false,
+            "code": error.exit_code(),
+            "message": error.to_string(),
+        }),
+    }
+}
+
+fn workflow_output(action: &str, results: Vec<Value>) -> Result<Output, AppError> {
+    let failures = results
+        .iter()
+        .filter(|result| result["ok"] == Value::Bool(false))
+        .collect::<Vec<_>>();
+    if failures.is_empty() {
+        return Ok(Output::success_with_data(
+            format!("{action}完成"),
+            json!({ "services": results }),
+        ));
+    }
+    let code = failures
+        .iter()
+        .filter_map(|result| result["code"].as_u64())
+        .max()
+        .and_then(|code| u8::try_from(code).ok())
+        .unwrap_or(7);
+    Ok(Output::failure_with_data(
+        code,
+        format!("{action}部分失败，已分别保留每项结果"),
+        json!({ "services": results }),
+    ))
+}
+
+fn release_asset_name(name: &str) -> Result<&str, AppError> {
+    let path = Path::new(name);
+    if name.contains(['/', '\\'])
+        || path.components().count() != 1
+        || path.file_name().and_then(|part| part.to_str()) != Some(name)
+    {
+        return Err(AppError::Verification("Release 资产文件名无效".into()));
+    }
+    Ok(name)
+}
+
+fn install_secret(environment: &str, prompt: &str) -> Result<String, AppError> {
+    if let Some(value) = std::env::var_os(environment) {
+        return Ok(value.to_string_lossy().into_owned());
+    }
+    if !io::stdin().is_terminal() {
+        return Err(AppError::Usage(format!(
+            "首次安装请设置 {environment} 环境变量，或在交互式终端中运行"
+        )));
+    }
+    rpassword::prompt_password(prompt).map_err(|_| AppError::Internal("无法读取私密配置值".into()))
 }
 
 fn resolve_services(name: Option<&str>) -> Result<Vec<Service>, AppError> {

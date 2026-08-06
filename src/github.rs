@@ -15,7 +15,6 @@ const USER_AGENT: &str = "cpactl";
 
 #[derive(Clone)]
 pub struct GithubClient {
-    client: Client,
     api_base: Url,
     config: ConfigStore,
 }
@@ -28,12 +27,7 @@ impl GithubClient {
     pub fn with_api_base(config: ConfigStore, api_base: impl AsRef<str>) -> Result<Self, AppError> {
         let api_base = Url::parse(api_base.as_ref())
             .map_err(|_| AppError::Usage("GitHub API 地址无效".into()))?;
-        let client = build_client(config.load_proxy()?)?;
-        Ok(Self {
-            client,
-            api_base,
-            config,
-        })
+        Ok(Self { api_base, config })
     }
 
     pub async fn latest_release(&self, service: Service) -> Result<ReleaseMetadata, AppError> {
@@ -60,8 +54,8 @@ impl GithubClient {
     }
 
     async fn get(&self, url: Url) -> Result<Response, AppError> {
-        let response = self
-            .client
+        let client = build_client(self.config.load_proxy()?)?;
+        let response = client
             .get(url.clone())
             .send()
             .await
@@ -75,8 +69,7 @@ impl GithubClient {
                 "GitHub 拒绝访问，请配置 GitHub Token".into(),
             ));
         };
-        let response = self
-            .client
+        let response = client
             .get(url)
             .bearer_auth(token)
             .send()

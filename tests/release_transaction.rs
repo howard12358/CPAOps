@@ -1,4 +1,5 @@
 use std::fs;
+use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -9,7 +10,13 @@ use cpactl::domain::release::{
 };
 use cpactl::domain::runtime::RuntimePaths;
 use cpactl::domain::service::Service;
-use cpactl::storage::filesystem::RuntimeStore;
+use cpactl::storage::{config::ConfigStore, filesystem::RuntimeStore};
+use cpactl::{
+    app::{App, ReleaseProvider},
+    cli::Command,
+    domain::error::AppError,
+    platform::{Platform, ServiceStatus},
+};
 use flate2::Compression;
 use flate2::write::GzEncoder;
 use sha2::{Digest, Sha256};
@@ -252,4 +259,163 @@ fn verified_archive_is_staged_before_its_release_becomes_available() {
     assert!(!store.paths().current.join(Service::Cli.key()).exists());
 
     fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn failed_keeper_update_restores_keeper_but_keeps_successful_cli_update() {
+    let (root, store) = runtime();
+    let cli_v1 = create_release(&store, Service::Cli, "v1");
+    let keeper_v1 = create_release(&store, Service::Keeper, "v1");
+    let cli_v2 = create_release(&store, Service::Cli, "v2");
+    let keeper_v2 = create_release(&store, Service::Keeper, "v2");
+    let transaction = ReleaseTransaction::new(store.paths().clone());
+    transaction.set_current(Service::Cli, &cli_v1).unwrap();
+    transaction
+        .set_current(Service::Keeper, &keeper_v1)
+        .unwrap();
+    ConfigStore::new(store.paths().clone())
+        .initialize("management-key", "keeper-password")
+        .unwrap();
+
+    let platform = UpdatePlatform::new(store.paths().clone());
+    let app = App::with_release_provider(
+        store.paths().clone(),
+        platform,
+        StaticReleaseProvider::new([(Service::Cli, "v2"), (Service::Keeper, "v2")]),
+        ReleasePlatform::MacosAarch64,
+    );
+
+    let output = app.run(&Command::Update { service: None }).unwrap();
+
+    assert!(!output.ok);
+    assert_eq!(
+        current_target(&store, Service::Cli),
+        cli_v2.canonicalize().unwrap()
+    );
+    assert_eq!(
+        current_target(&store, Service::Keeper),
+        keeper_v1.canonicalize().unwrap()
+    );
+    assert!(keeper_v2.is_dir());
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn rollback_rejects_version_not_present_in_verified_releases() {
+    let (root, store) = runtime();
+    let version = release_dir(&store, Service::Cli, "v2");
+    fs::create_dir_all(&version).unwrap();
+    fs::write(version.join("cli-proxy-api"), "unverified").unwrap();
+    let app = App::with_release_provider(
+        store.paths().clone(),
+        UpdatePlatform::new(store.paths().clone()),
+        StaticReleaseProvider::new([]),
+        ReleasePlatform::MacosAarch64,
+    );
+
+    let error = app
+        .run(&Command::Rollback {
+            service: "cli".into(),
+            version: "v2".into(),
+        })
+        .unwrap_err();
+
+    assert!(matches!(error, AppError::State(_)));
+    fs::remove_dir_all(root).unwrap();
+}
+
+struct StaticReleaseProvider {
+    versions: Vec<(Service, String)>,
+}
+
+impl StaticReleaseProvider {
+    fn new<const N: usize>(versions: [(Service, &str); N]) -> Self {
+        Self {
+            versions: versions
+                .into_iter()
+                .map(|(service, version)| (service, version.into()))
+                .collect(),
+        }
+    }
+}
+
+impl ReleaseProvider for StaticReleaseProvider {
+    fn latest_release(&self, service: Service) -> Result<ReleaseMetadata, AppError> {
+        let version = self
+            .versions
+            .iter()
+            .find_map(|(candidate, version)| (*candidate == service).then_some(version))
+            .ok_or_else(|| AppError::Network("测试 Release 不存在".into()))?;
+        let asset = match service {
+            Service::Cli => format!("CLIProxyAPI_{version}_darwin_aarch64.tar.gz"),
+            Service::Keeper => format!("cpa-usage-keeper_{version}_darwin_arm64.tar.gz"),
+        };
+        Ok(ReleaseMetadata {
+            tag: version.clone(),
+            assets: vec![
+                ReleaseAsset {
+                    name: asset.clone(),
+                    url: format!("memory://{asset}"),
+                },
+                ReleaseAsset {
+                    name: "checksums.txt".into(),
+                    url: "memory://checksums.txt".into(),
+                },
+            ],
+        })
+    }
+
+    fn download(&self, _: &str, _: &Path) -> Result<PathBuf, AppError> {
+        Err(AppError::Internal("测试不应下载已验证版本".into()))
+    }
+}
+
+struct UpdatePlatform {
+    paths: RuntimePaths,
+}
+
+impl UpdatePlatform {
+    const fn new(paths: RuntimePaths) -> Self {
+        Self { paths }
+    }
+}
+
+impl Platform for UpdatePlatform {
+    fn check_supported(&self) -> Result<(), AppError> {
+        Ok(())
+    }
+    fn check_permissions(&self) -> Result<(), AppError> {
+        Ok(())
+    }
+    fn install_services(&self) -> Result<(), AppError> {
+        Ok(())
+    }
+    fn remove_services(&self) -> Result<(), AppError> {
+        Ok(())
+    }
+    fn start(&self, _: Service) -> Result<(), AppError> {
+        Ok(())
+    }
+    fn stop(&self, _: Service) -> Result<(), AppError> {
+        Ok(())
+    }
+    fn restart(&self, _: Service) -> Result<(), AppError> {
+        Ok(())
+    }
+    fn status(&self, _: Service) -> Result<ServiceStatus, AppError> {
+        Ok(ServiceStatus {
+            managed: true,
+            disabled: false,
+            listening: true,
+        })
+    }
+    fn replace_current_link(&self, _: Service, _: &Path) -> Result<(), AppError> {
+        Ok(())
+    }
+    fn is_port_listening(&self, service: Service) -> Result<bool, AppError> {
+        Ok(service == Service::Cli || !self.paths.current.join(Service::Keeper.key()).exists())
+    }
+    fn configure_firewall(&self) -> Result<(), AppError> {
+        Ok(())
+    }
 }

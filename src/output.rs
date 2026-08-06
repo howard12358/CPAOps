@@ -37,6 +37,15 @@ impl Output {
         }
     }
 
+    pub fn failure_with_data(code: u8, message: impl Into<String>, data: Value) -> Self {
+        Self {
+            ok: false,
+            code,
+            message: message.into(),
+            data,
+        }
+    }
+
     pub fn to_json(&self) -> String {
         serde_json::to_string(self)
             .unwrap_or_else(|_| "{\"ok\":false,\"code\":1,\"message\":\"输出序列化失败\"}".into())

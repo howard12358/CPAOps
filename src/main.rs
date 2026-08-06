@@ -15,7 +15,10 @@ fn main() {
         let platform = native_platform(paths.clone())?;
         let app = App::new(paths, platform);
         let output = app.run(&cli.command)?;
-        print_success(&output, cli.json);
+        print_output(&output, cli.json);
+        if !output.ok {
+            std::process::exit(i32::from(output.code));
+        }
 
         if let cpactl::cli::Command::Logs {
             service,
@@ -34,7 +37,7 @@ fn main() {
     }
 }
 
-fn print_success(output: &Output, json: bool) {
+fn print_output(output: &Output, json: bool) {
     if json {
         println!("{}", output.to_json());
     } else {
