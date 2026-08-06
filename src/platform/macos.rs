@@ -165,6 +165,31 @@ impl<R: CommandRunner> MacosPlatform<R> {
         fs::write(self.paths.disabled_file(service), b"disabled\n")
             .map_err(|_| AppError::State("无法写入服务停用标记".into()))
     }
+
+    fn is_registered(&self, service: Service) -> Result<bool, AppError> {
+        Ok(self
+            .runner
+            .run(
+                "launchctl",
+                &[
+                    OsString::from("print"),
+                    OsString::from(self.service_target(service)),
+                ],
+            )?
+            .success)
+    }
+
+    fn bootout_attempted_services(&self, services: &[Service]) {
+        for service in services.iter().rev() {
+            let _ = self.runner.run(
+                "launchctl",
+                &[
+                    OsString::from("bootout"),
+                    OsString::from(self.service_target(*service)),
+                ],
+            );
+        }
+    }
 }
 
 impl<R: CommandRunner> Platform for MacosPlatform<R> {
@@ -183,25 +208,36 @@ impl<R: CommandRunner> Platform for MacosPlatform<R> {
     }
 
     fn install_services(&self) -> Result<(), AppError> {
-        fs::create_dir_all(&self.paths.logs)
-            .map_err(|_| AppError::State("无法创建服务日志目录".into()))?;
-        for service in [Service::Cli, Service::Keeper] {
-            self.write_wrapper(service)?;
-            let plist = self.write_plist(service)?;
-            self.run_required(
-                "plutil",
-                vec![OsString::from("-lint"), plist.clone().into_os_string()],
-            )?;
-            self.run_required(
-                "launchctl",
-                vec![
-                    OsString::from("bootstrap"),
-                    OsString::from(self.domain()),
-                    plist.into_os_string(),
-                ],
-            )?;
+        let mut attempted_services = Vec::new();
+        let result = (|| {
+            fs::create_dir_all(&self.paths.logs)
+                .map_err(|_| AppError::State("无法创建服务日志目录".into()))?;
+            for service in [Service::Cli, Service::Keeper] {
+                self.write_wrapper(service)?;
+                let plist = self.write_plist(service)?;
+                self.run_required(
+                    "plutil",
+                    vec![OsString::from("-lint"), plist.clone().into_os_string()],
+                )?;
+                if self.is_registered(service)? {
+                    continue;
+                }
+                attempted_services.push(service);
+                self.run_required(
+                    "launchctl",
+                    vec![
+                        OsString::from("bootstrap"),
+                        OsString::from(self.domain()),
+                        plist.into_os_string(),
+                    ],
+                )?;
+            }
+            Ok(())
+        })();
+        if result.is_err() {
+            self.bootout_attempted_services(&attempted_services);
         }
-        Ok(())
+        result
     }
 
     fn remove_services(&self) -> Result<(), AppError> {
@@ -237,8 +273,8 @@ impl<R: CommandRunner> Platform for MacosPlatform<R> {
             "launchctl",
             vec![
                 OsString::from("kill"),
-                OsString::from("SIGTERM"),
                 OsString::from(self.service_target(service)),
+                OsString::from("SIGTERM"),
             ],
         )
     }
@@ -248,16 +284,7 @@ impl<R: CommandRunner> Platform for MacosPlatform<R> {
     }
 
     fn status(&self, service: Service) -> Result<ServiceStatus, AppError> {
-        let managed = self
-            .runner
-            .run(
-                "launchctl",
-                &[
-                    OsString::from("print"),
-                    OsString::from(self.service_target(service)),
-                ],
-            )?
-            .success;
+        let managed = self.is_registered(service)?;
         Ok(ServiceStatus {
             managed,
             disabled: self.paths.disabled_file(service).exists(),
