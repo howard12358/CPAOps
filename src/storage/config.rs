@@ -330,6 +330,9 @@ impl ProxyConfig {
         {
             return Self::parse(url);
         }
+        if url.starts_with("$env:") {
+            return Self::parse(&powershell_proxy_assignments(url)?);
+        }
         Self::parse(&format!("all_proxy={url}"))
     }
 
@@ -389,6 +392,27 @@ impl ProxyConfig {
         }
         Ok(())
     }
+}
+
+fn powershell_proxy_assignments(input: &str) -> Result<String, AppError> {
+    input
+        .split(';')
+        .filter(|assignment| !assignment.trim().is_empty())
+        .map(|assignment| {
+            let assignment = assignment.trim();
+            let assignment = assignment
+                .strip_prefix("$env:")
+                .or_else(|| assignment.strip_prefix("$Env:"))
+                .ok_or_else(|| AppError::Usage("PowerShell 代理配置格式无效".into()))?;
+            let (key, value) = assignment
+                .split_once('=')
+                .ok_or_else(|| AppError::Usage("PowerShell 代理配置格式无效".into()))?;
+            let key = key.to_ascii_lowercase();
+            let value = value.trim().trim_matches(['\'', '"']);
+            Ok(format!("{key}={value}"))
+        })
+        .collect::<Result<Vec<_>, AppError>>()
+        .map(|assignments| assignments.join(" "))
 }
 
 impl fmt::Debug for ProxyConfig {

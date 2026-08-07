@@ -239,6 +239,16 @@ fn proxy_from_url_accepts_exported_environment_assignments() {
 }
 
 #[test]
+fn proxy_from_url_accepts_powershell_environment_assignments() {
+    let proxy = ProxyConfig::from_url(
+        "$env:HTTP_PROXY=\"http://127.0.0.1:7897\"; $env:HTTPS_PROXY=\"http://127.0.0.1:7897\"; $env:ALL_PROXY=\"socks5://127.0.0.1:7897\"",
+    )
+    .unwrap();
+
+    assert_eq!(proxy.redacted_summary(), "已配置代理");
+}
+
+#[test]
 fn proxy_rejects_unknown_key_and_unsupported_scheme() {
     assert!(ProxyConfig::parse("ftp_proxy=http://host:7890").is_err());
     assert!(ProxyConfig::parse("https_proxy=ftp://host:7890").is_err());
