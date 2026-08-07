@@ -9,6 +9,7 @@ use predicates::prelude::*;
 use serde_json::json;
 use std::fs;
 use std::path::Path;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use tempfile::TempDir;
 
@@ -196,6 +197,24 @@ fn stop_writes_disabled_marker_before_platform_stop() {
 }
 
 #[test]
+fn start_rejects_an_unregistered_service_with_state_exit_code() {
+    let fixture = Fixture::new();
+    fs::create_dir_all(&fixture.paths.root).unwrap();
+    fixture.platform.set_managed(false);
+
+    let error = fixture
+        .app()
+        .run(&CliCommand::Start {
+            service: Some("cli".into()),
+        })
+        .unwrap_err();
+
+    assert_eq!(error.exit_code(), 4);
+    assert_eq!(error.to_string(), "服务未安装，请先运行 cpactl install");
+    assert!(fixture.platform.events().is_empty());
+}
+
+#[test]
 fn log_follower_returns_only_lines_added_since_previous_poll() {
     let fixture = Fixture::new();
     fs::create_dir_all(&fixture.paths.logs).unwrap();
@@ -240,6 +259,7 @@ impl Fixture {
 struct FakePlatform {
     paths: RuntimePaths,
     events: Arc<Mutex<Vec<String>>>,
+    managed: Arc<AtomicBool>,
 }
 
 impl FakePlatform {
@@ -247,11 +267,16 @@ impl FakePlatform {
         Self {
             paths,
             events: Arc::new(Mutex::new(Vec::new())),
+            managed: Arc::new(AtomicBool::new(true)),
         }
     }
 
     fn events(&self) -> Vec<String> {
         self.events.lock().unwrap().clone()
+    }
+
+    fn set_managed(&self, managed: bool) {
+        self.managed.store(managed, Ordering::Relaxed);
     }
 }
 
@@ -295,7 +320,7 @@ impl Platform for FakePlatform {
 
     fn status(&self, _: Service) -> Result<ServiceStatus, AppError> {
         Ok(ServiceStatus {
-            managed: true,
+            managed: self.managed.load(Ordering::Relaxed),
             disabled: false,
             listening: true,
         })

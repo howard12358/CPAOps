@@ -268,6 +268,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
     fn start(&self, service_name: Option<&str>) -> Result<Output, AppError> {
         self.prepare_lifecycle()?;
         for service in resolve_services(service_name)? {
+            self.require_registered(service)?;
             clear_disabled(&self.paths, service)?;
             self.platform.start(service)?;
         }
@@ -277,6 +278,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
     fn stop(&self, service_name: Option<&str>) -> Result<Output, AppError> {
         self.prepare_lifecycle()?;
         for service in resolve_services(service_name)? {
+            self.require_registered(service)?;
             mark_disabled(&self.paths, service)?;
             self.platform.stop(service)?;
         }
@@ -286,6 +288,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
     fn restart(&self, service_name: Option<&str>) -> Result<Output, AppError> {
         self.prepare_lifecycle()?;
         for service in resolve_services(service_name)? {
+            self.require_registered(service)?;
             clear_disabled(&self.paths, service)?;
             self.platform.restart(service)?;
         }
@@ -343,6 +346,16 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         self.require_installed()?;
         self.platform.check_supported()?;
         self.platform.check_permissions()
+    }
+
+    fn require_registered(&self, service: Service) -> Result<(), AppError> {
+        if self.platform.status(service)?.managed {
+            Ok(())
+        } else {
+            Err(AppError::State(
+                "服务未安装，请先运行 cpactl install".into(),
+            ))
+        }
     }
 }
 
