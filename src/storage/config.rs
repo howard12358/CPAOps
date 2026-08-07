@@ -1,3 +1,4 @@
+use std::env;
 use std::fmt;
 use std::fs;
 use std::io::Write;
@@ -20,6 +21,70 @@ static TEMPORARY_FILE_COUNTER: AtomicU64 = AtomicU64::new(0);
 #[derive(Clone, Debug)]
 pub struct ConfigStore {
     paths: RuntimePaths,
+}
+
+#[derive(Clone, Debug)]
+pub struct GithubTokenStore {
+    path: PathBuf,
+}
+
+impl GithubTokenStore {
+    pub fn default_location() -> Self {
+        let config = if cfg!(target_os = "windows") {
+            env::var_os("ProgramData")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from(r"C:\\ProgramData"))
+                .join("CPAStack/config")
+        } else {
+            env::var_os("HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| PathBuf::from("."))
+                .join("Library/Application Support/cpa-stack/config")
+        };
+        Self::at(config.join("github-token"))
+    }
+
+    pub const fn at(path: PathBuf) -> Self {
+        Self { path }
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
+    pub fn save(&self, token: &str) -> Result<(), AppError> {
+        validate_secret_input(token)?;
+        let directory = self
+            .path
+            .parent()
+            .ok_or_else(|| AppError::Internal("GitHub Token 路径无效".into()))?;
+        fs::create_dir_all(directory).map_err(|error| {
+            AppError::Permission(format!("无法创建 GitHub Token 目录：{error}"))
+        })?;
+        set_private_directory(directory)?;
+        write_private_file(&self.path, token)
+    }
+
+    pub fn load(&self) -> Result<Option<String>, AppError> {
+        if !self.path.exists() {
+            return Ok(None);
+        }
+        ensure_private_file(&self.path)?;
+        let token = fs::read_to_string(&self.path)
+            .map_err(|_| AppError::State("GitHub Token 无法读取".into()))?;
+        let token = token.trim();
+        Ok((!token.is_empty()).then(|| token.into()))
+    }
+
+    pub fn clear(&self) -> Result<(), AppError> {
+        match fs::remove_file(&self.path) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(AppError::Permission(format!(
+                "无法清除 GitHub Token：{error}"
+            ))),
+        }
+    }
 }
 
 impl ConfigStore {
@@ -120,43 +185,6 @@ impl ConfigStore {
         }
     }
 
-    pub fn token_present(&self) -> bool {
-        self.load_token().ok().flatten().is_some()
-    }
-
-    pub fn save_token(&self, token: &str) -> Result<(), AppError> {
-        validate_secret_input(token)?;
-        fs::create_dir_all(&self.paths.config)
-            .map_err(|error| AppError::Permission(format!("无法创建配置目录：{error}")))?;
-        set_private_directory(&self.paths.config)?;
-        write_private_file(&self.token_path(), token)
-    }
-
-    pub fn load_token(&self) -> Result<Option<String>, AppError> {
-        let path = self.token_path();
-        if !path.exists() {
-            return Ok(None);
-        }
-        ensure_private_file(&path)?;
-        let token = fs::read_to_string(path)
-            .map_err(|_| AppError::State("GitHub Token 无法读取".into()))?;
-        let token = token.trim();
-        if token.is_empty() {
-            return Ok(None);
-        }
-        Ok(Some(token.into()))
-    }
-
-    pub fn clear_token(&self) -> Result<(), AppError> {
-        match fs::remove_file(self.token_path()) {
-            Ok(()) => Ok(()),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-            Err(error) => Err(AppError::Permission(format!(
-                "无法清除 GitHub Token：{error}"
-            ))),
-        }
-    }
-
     fn cpa_config_path(&self) -> PathBuf {
         self.paths.config.join("config.yaml")
     }
@@ -167,10 +195,6 @@ impl ConfigStore {
 
     fn proxy_path(&self) -> PathBuf {
         self.paths.config.join("proxy.toml")
-    }
-
-    fn token_path(&self) -> PathBuf {
-        self.paths.config.join("github-token")
     }
 }
 

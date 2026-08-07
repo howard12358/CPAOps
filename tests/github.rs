@@ -7,7 +7,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use cpactl::domain::runtime::RuntimePaths;
 use cpactl::domain::service::Service;
 use cpactl::github::GithubClient;
-use cpactl::storage::config::{ConfigStore, ProxyConfig};
+use cpactl::storage::config::{ConfigStore, GithubTokenStore, ProxyConfig};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
@@ -24,6 +24,14 @@ fn test_root() -> PathBuf {
 
 fn config_store(root: &std::path::Path) -> ConfigStore {
     ConfigStore::new(RuntimePaths::from_root(root.to_path_buf()).unwrap())
+}
+
+fn token_store(root: &std::path::Path) -> GithubTokenStore {
+    GithubTokenStore::at(root.join("github-token"))
+}
+
+fn client(root: &std::path::Path, config: ConfigStore, api_base: &str) -> GithubClient {
+    GithubClient::with_api_base_and_token_store(config, api_base, token_store(root)).unwrap()
 }
 
 struct TestServer {
@@ -144,8 +152,8 @@ async fn retries_with_saved_token_only_after_forbidden() {
     .await;
     let root = test_root();
     let config = config_store(&root);
-    config.save_token("stored-token").unwrap();
-    let client = GithubClient::with_api_base(config, server.base_url.clone()).unwrap();
+    token_store(&root).save("stored-token").unwrap();
+    let client = client(&root, config, &server.base_url);
 
     let release = client.latest_release(Service::Cli).await.unwrap();
 
@@ -172,8 +180,8 @@ async fn retries_with_saved_token_only_after_unauthorized() {
     .await;
     let root = test_root();
     let config = config_store(&root);
-    config.save_token("stored-token").unwrap();
-    let client = GithubClient::with_api_base(config, server.base_url.clone()).unwrap();
+    token_store(&root).save("stored-token").unwrap();
+    let client = client(&root, config, &server.base_url);
 
     let release = client.latest_release(Service::Cli).await.unwrap();
 
@@ -201,7 +209,7 @@ async fn sends_github_requests_through_saved_socks5_proxy() {
     let config = config_store(&root);
     let proxy = ProxyConfig::parse(&format!("all_proxy={}", socks.url)).unwrap();
     config.save_proxy(&proxy).unwrap();
-    let client = GithubClient::with_api_base(config, server.base_url.clone()).unwrap();
+    let client = client(&root, config, &server.base_url);
 
     let release = client.latest_release(Service::Cli).await.unwrap();
 
@@ -215,7 +223,7 @@ async fn download_persists_completed_response_without_temporary_file() {
     let server = TestServer::start(vec![response("200 OK", "verified archive")]).await;
     let root = test_root();
     let destination = root.join("downloads").join("asset.tar.gz");
-    let client = GithubClient::with_api_base(config_store(&root), server.base_url.clone()).unwrap();
+    let client = client(&root, config_store(&root), &server.base_url);
 
     let downloaded = client
         .download(
@@ -239,8 +247,8 @@ async fn download_error_does_not_expose_sensitive_url() {
     let server = TestServer::start(vec![response("500 Internal Server Error", "failed")]).await;
     let root = test_root();
     let config = config_store(&root);
-    config.save_token("stored-token").unwrap();
-    let client = GithubClient::with_api_base(config, server.base_url.clone()).unwrap();
+    token_store(&root).save("stored-token").unwrap();
+    let client = client(&root, config, &server.base_url);
     let sensitive_url = format!("{}/private/super-secret-asset", server.base_url);
 
     let error = client

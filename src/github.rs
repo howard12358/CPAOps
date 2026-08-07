@@ -10,7 +10,7 @@ use crate::domain::error::AppError;
 use crate::domain::release::ReleaseMetadata;
 use crate::domain::service::{Service, ServiceCatalog};
 use crate::progress::{NoProgress, ProgressReporter};
-use crate::storage::config::{ConfigStore, ProxyConfig};
+use crate::storage::config::{ConfigStore, GithubTokenStore, ProxyConfig};
 
 const GITHUB_API_BASE: &str = "https://api.github.com/";
 const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
@@ -22,17 +22,34 @@ const USER_AGENT: &str = "cpactl";
 pub struct GithubClient {
     api_base: Url,
     config: ConfigStore,
+    token_store: GithubTokenStore,
 }
 
 impl GithubClient {
     pub fn new(config: ConfigStore) -> Result<Self, AppError> {
-        Self::with_api_base(config, GITHUB_API_BASE)
+        Self::with_api_base_and_token_store(
+            config,
+            GITHUB_API_BASE,
+            GithubTokenStore::default_location(),
+        )
     }
 
     pub fn with_api_base(config: ConfigStore, api_base: impl AsRef<str>) -> Result<Self, AppError> {
+        Self::with_api_base_and_token_store(config, api_base, GithubTokenStore::default_location())
+    }
+
+    pub fn with_api_base_and_token_store(
+        config: ConfigStore,
+        api_base: impl AsRef<str>,
+        token_store: GithubTokenStore,
+    ) -> Result<Self, AppError> {
         let api_base = Url::parse(api_base.as_ref())
             .map_err(|_| AppError::Usage("GitHub API 地址无效".into()))?;
-        Ok(Self { api_base, config })
+        Ok(Self {
+            api_base,
+            config,
+            token_store,
+        })
     }
 
     pub async fn latest_release(&self, service: Service) -> Result<ReleaseMetadata, AppError> {
@@ -151,7 +168,7 @@ impl GithubClient {
             return checked_response(response);
         }
 
-        let Some(token) = self.config.load_token()? else {
+        let Some(token) = self.token_store.load()? else {
             return Err(AppError::Network(
                 "GitHub 拒绝访问，请运行 cpactl auth login 进行认证".into(),
             ));

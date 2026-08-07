@@ -90,23 +90,6 @@ fn help_lists_each_command_with_its_chinese_purpose() {
 }
 
 #[test]
-fn auth_status_json_reports_no_authentication_for_a_clean_root() {
-    let root = TempDir::new().unwrap();
-    Command::cargo_bin("cpactl")
-        .unwrap()
-        .args([
-            "--root",
-            root.path().to_str().unwrap(),
-            "--json",
-            "auth",
-            "status",
-        ])
-        .assert()
-        .success()
-        .stdout(predicate::str::contains("\"authenticated\":false"));
-}
-
-#[test]
 fn path_json_is_emitted_by_the_binary() {
     let root = TempDir::new().unwrap();
     Command::cargo_bin("cpactl")

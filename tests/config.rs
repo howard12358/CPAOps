@@ -4,7 +4,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cpactl::domain::runtime::RuntimePaths;
-use cpactl::storage::config::{ConfigStore, ProxyConfig, Redacted};
+use cpactl::storage::config::{ConfigStore, GithubTokenStore, ProxyConfig, Redacted};
 use cpactl::storage::filesystem::RuntimeStore;
 
 static TEST_ROOT_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -246,11 +246,12 @@ fn proxy_rejects_unknown_key_and_unsupported_scheme() {
 
 #[test]
 fn token_status_and_redacted_display_do_not_reveal_secret() {
-    let (root, runtime, config) = store();
+    let (root, runtime, _) = store();
     runtime.ensure_layout().unwrap();
-    write_private_file(&runtime.paths().config.join("github-token"), "token-value");
+    let token_store = GithubTokenStore::at(root.join("github-token"));
+    token_store.save("token-value").unwrap();
 
-    assert!(config.token_present());
+    assert!(token_store.load().unwrap().is_some());
     assert_eq!(Redacted::new("token-value").to_string(), "已配置");
 
     fs::remove_dir_all(root).unwrap();
@@ -261,13 +262,14 @@ fn token_status_and_redacted_display_do_not_reveal_secret() {
 fn saving_token_creates_a_private_file() {
     use std::os::unix::fs::PermissionsExt;
 
-    let (root, runtime, config) = store();
+    let (root, runtime, _) = store();
     runtime.ensure_layout().unwrap();
+    let token_store = GithubTokenStore::at(root.join("github-token"));
 
-    config.save_token("token-value").unwrap();
+    token_store.save("token-value").unwrap();
 
-    let token_path = runtime.paths().config.join("github-token");
-    assert!(config.token_present());
+    let token_path = token_store.path();
+    assert!(token_store.load().unwrap().is_some());
     assert_eq!(
         fs::metadata(token_path).unwrap().permissions().mode() & 0o777,
         0o600
@@ -277,12 +279,13 @@ fn saving_token_creates_a_private_file() {
 
 #[test]
 fn clearing_token_removes_saved_authentication() {
-    let (root, runtime, config) = store();
+    let (root, runtime, _) = store();
     runtime.ensure_layout().unwrap();
-    config.save_token("token-value").unwrap();
+    let token_store = GithubTokenStore::at(root.join("github-token"));
+    token_store.save("token-value").unwrap();
 
-    config.clear_token().unwrap();
+    token_store.clear().unwrap();
 
-    assert!(!config.token_present());
+    assert!(token_store.load().unwrap().is_none());
     fs::remove_dir_all(root).unwrap();
 }

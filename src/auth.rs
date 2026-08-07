@@ -7,21 +7,26 @@ use crate::domain::error::AppError;
 use crate::domain::runtime::RuntimePaths;
 use crate::github::GithubClient;
 use crate::output::Output;
-use crate::storage::config::ConfigStore;
+use crate::storage::config::{ConfigStore, GithubTokenStore};
 
 pub fn run(paths: RuntimePaths, action: &AuthAction) -> Result<Output, AppError> {
     let config = ConfigStore::new(paths);
+    let token_store = GithubTokenStore::default_location();
     match action {
-        AuthAction::Login { token } => login(&config, *token),
-        AuthAction::Status => status(&config),
+        AuthAction::Login { token } => login(&config, &token_store, *token),
+        AuthAction::Status => status(&token_store),
         AuthAction::Logout => {
-            config.clear_token()?;
+            token_store.clear()?;
             Ok(Output::success("已退出 GitHub 认证"))
         }
     }
 }
 
-fn login(config: &ConfigStore, use_manual_token: bool) -> Result<Output, AppError> {
+fn login(
+    config: &ConfigStore,
+    token_store: &GithubTokenStore,
+    use_manual_token: bool,
+) -> Result<Output, AppError> {
     if !io::stdin().is_terminal() {
         return Err(AppError::Usage(
             "GitHub 登录仅允许在交互式终端中执行".into(),
@@ -33,12 +38,12 @@ fn login(config: &ConfigStore, use_manual_token: bool) -> Result<Output, AppErro
     } else {
         GithubClient::new(config.clone())?.device_login()?
     };
-    config.save_token(&token)?;
+    token_store.save(&token)?;
     Ok(Output::success("GitHub 认证已保存"))
 }
 
-fn status(config: &ConfigStore) -> Result<Output, AppError> {
-    let authenticated = config.load_token()?.is_some();
+fn status(token_store: &GithubTokenStore) -> Result<Output, AppError> {
+    let authenticated = token_store.load()?.is_some();
     Ok(Output::success_with_data(
         if authenticated {
             "GitHub 已认证"
