@@ -147,6 +147,16 @@ impl ConfigStore {
         Ok(Some(token.into()))
     }
 
+    pub fn clear_token(&self) -> Result<(), AppError> {
+        match fs::remove_file(self.token_path()) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(AppError::Permission(format!(
+                "无法清除 GitHub Token：{error}"
+            ))),
+        }
+    }
+
     fn cpa_config_path(&self) -> PathBuf {
         self.paths.config.join("config.yaml")
     }

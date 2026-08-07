@@ -274,3 +274,15 @@ fn saving_token_creates_a_private_file() {
     );
     fs::remove_dir_all(root).unwrap();
 }
+
+#[test]
+fn clearing_token_removes_saved_authentication() {
+    let (root, runtime, config) = store();
+    runtime.ensure_layout().unwrap();
+    config.save_token("token-value").unwrap();
+
+    config.clear_token().unwrap();
+
+    assert!(!config.token_present());
+    fs::remove_dir_all(root).unwrap();
+}

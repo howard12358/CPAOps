@@ -13,6 +13,9 @@ use crate::progress::{NoProgress, ProgressReporter};
 use crate::storage::config::{ConfigStore, ProxyConfig};
 
 const GITHUB_API_BASE: &str = "https://api.github.com/";
+const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
+const GITHUB_ACCESS_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
+const GITHUB_OAUTH_CLIENT_ID: &str = "Ov23lirbrxh4abfht24N";
 const USER_AGENT: &str = "cpactl";
 
 #[derive(Clone)]
@@ -61,6 +64,82 @@ impl GithubClient {
         persist_download(response, destination, progress).await
     }
 
+    pub fn device_login(&self) -> Result<String, AppError> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| AppError::Internal("无法初始化 GitHub 认证运行时".into()))?;
+        runtime.block_on(self.device_login_inner())
+    }
+
+    async fn device_login_inner(&self) -> Result<String, AppError> {
+        let client = build_client(self.config.load_proxy()?)?;
+        let response = client
+            .post(GITHUB_DEVICE_CODE_URL)
+            .header(reqwest::header::ACCEPT, "application/json")
+            .form(&[("client_id", GITHUB_OAUTH_CLIENT_ID)])
+            .send()
+            .await
+            .map_err(|_| {
+                AppError::Network("无法连接 GitHub 认证服务，请检查网络或代理配置".into())
+            })?;
+        let device = oauth_response(response).await?;
+        let device_code = device
+            .device_code
+            .ok_or_else(|| AppError::Network("GitHub 认证响应缺少设备代码".into()))?;
+        let user_code = device
+            .user_code
+            .ok_or_else(|| AppError::Network("GitHub 认证响应缺少用户代码".into()))?;
+        let verification_uri = device
+            .verification_uri
+            .ok_or_else(|| AppError::Network("GitHub 认证响应缺少授权地址".into()))?;
+        eprintln!("请在浏览器打开：{verification_uri}");
+        eprintln!("输入一次性验证码：{user_code}");
+        eprintln!("等待 GitHub 授权完成…");
+
+        let started = std::time::Instant::now();
+        let expires_in = device.expires_in.unwrap_or(900);
+        let mut interval = device.interval.unwrap_or(5).max(1);
+        loop {
+            if started.elapsed().as_secs() >= u64::from(expires_in) {
+                return Err(AppError::Network(
+                    "GitHub 授权已过期，请重新运行 cpactl auth login".into(),
+                ));
+            }
+            std::thread::sleep(std::time::Duration::from_secs(u64::from(interval)));
+            let response = client
+                .post(GITHUB_ACCESS_TOKEN_URL)
+                .header(reqwest::header::ACCEPT, "application/json")
+                .form(&[
+                    ("client_id", GITHUB_OAUTH_CLIENT_ID),
+                    ("device_code", device_code.as_str()),
+                    ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
+                ])
+                .send()
+                .await
+                .map_err(|_| {
+                    AppError::Network("无法轮询 GitHub 授权状态，请检查网络或代理配置".into())
+                })?;
+            let token = oauth_response(response).await?;
+            if let Some(access_token) = token.access_token {
+                return Ok(access_token);
+            }
+            match token.error.as_deref() {
+                Some("authorization_pending") => continue,
+                Some("slow_down") => interval = interval.saturating_add(5),
+                Some("expired_token") => {
+                    return Err(AppError::Network(
+                        "GitHub 授权已过期，请重新运行 cpactl auth login".into(),
+                    ));
+                }
+                Some("access_denied") => {
+                    return Err(AppError::Network("GitHub 授权被拒绝".into()));
+                }
+                _ => return Err(AppError::Network("GitHub 认证失败".into())),
+            }
+        }
+    }
+
     async fn get(&self, url: Url) -> Result<Response, AppError> {
         let client = build_client(self.config.load_proxy()?)?;
         let response = client
@@ -74,7 +153,7 @@ impl GithubClient {
 
         let Some(token) = self.config.load_token()? else {
             return Err(AppError::Network(
-                "GitHub 拒绝访问，请配置 GitHub Token".into(),
+                "GitHub 拒绝访问，请运行 cpactl auth login 进行认证".into(),
             ));
         };
         let response = client
@@ -85,6 +164,27 @@ impl GithubClient {
             .map_err(|_| AppError::Network("无法访问 GitHub，请检查网络或代理配置".into()))?;
         checked_response(response)
     }
+}
+
+#[derive(serde::Deserialize)]
+struct OAuthResponse {
+    access_token: Option<String>,
+    device_code: Option<String>,
+    user_code: Option<String>,
+    verification_uri: Option<String>,
+    expires_in: Option<u32>,
+    interval: Option<u32>,
+    error: Option<String>,
+}
+
+async fn oauth_response(response: Response) -> Result<OAuthResponse, AppError> {
+    if !response.status().is_success() {
+        return Err(AppError::Network("GitHub 认证请求失败".into()));
+    }
+    response
+        .json()
+        .await
+        .map_err(|_| AppError::Network("GitHub 认证响应无效".into()))
 }
 
 fn build_client(proxy: Option<ProxyConfig>) -> Result<Client, AppError> {

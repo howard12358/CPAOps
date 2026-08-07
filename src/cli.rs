@@ -51,6 +51,11 @@ pub enum Command {
         #[command(subcommand)]
         action: ProxyAction,
     },
+    #[command(about = "登录、查看或退出 GitHub 认证")]
+    Auth {
+        #[command(subcommand)]
+        action: AuthAction,
+    },
     #[command(about = "输出当前运行目录")]
     Path,
     #[command(about = "移除服务定义；--purge 删除运行数据")]
@@ -65,4 +70,17 @@ pub enum ProxyAction {
     Set,
     Show,
     Clear,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum AuthAction {
+    #[command(about = "通过 GitHub Device Flow 登录；--token 手工输入 PAT")]
+    Login {
+        #[arg(long)]
+        token: bool,
+    },
+    #[command(about = "查看 GitHub 认证状态")]
+    Status,
+    #[command(about = "清除本地 GitHub 认证")]
+    Logout,
 }

@@ -86,6 +86,24 @@ fn help_lists_each_command_with_its_chinese_purpose() {
 
     assert!(commands.contains("install    安装或修复服务"));
     assert!(commands.contains("update     查询并更新到 GitHub 最新 Release"));
+    assert!(commands.contains("auth       登录、查看或退出 GitHub 认证"));
+}
+
+#[test]
+fn auth_status_json_reports_no_authentication_for_a_clean_root() {
+    let root = TempDir::new().unwrap();
+    Command::cargo_bin("cpactl")
+        .unwrap()
+        .args([
+            "--root",
+            root.path().to_str().unwrap(),
+            "--json",
+            "auth",
+            "status",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"authenticated\":false"));
 }
 
 #[test]

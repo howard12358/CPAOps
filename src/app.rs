@@ -140,6 +140,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             Command::Stop { service } => self.stop(service.as_deref()),
             Command::Restart { service } => self.restart(service.as_deref()),
             Command::Proxy { action } => self.proxy(action),
+            Command::Auth { .. } => Err(AppError::Internal("认证命令必须由 CLI 入口处理".into())),
             Command::Uninstall { purge } => self.uninstall(*purge),
         };
         self.progress.clear();

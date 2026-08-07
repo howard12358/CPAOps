@@ -1,6 +1,6 @@
 use clap::Parser;
 use cpactl::app::App;
-use cpactl::cli::Cli;
+use cpactl::cli::{Cli, Command};
 use cpactl::domain::error::AppError;
 use cpactl::domain::runtime::RuntimePaths;
 use cpactl::output::Output;
@@ -23,6 +23,11 @@ fn main() {
     let cli = Cli::parse();
     let result = (|| {
         let paths = RuntimePaths::resolve(cli.root.clone())?;
+        if let Command::Auth { action } = &cli.command {
+            let output = cpactl::auth::run(paths, action)?;
+            print_output(&output, cli.json);
+            return Ok(());
+        }
         let platform = native_platform(paths.clone())?;
         let interactive =
             !cli.json && std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
