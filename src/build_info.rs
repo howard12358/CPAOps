@@ -11,7 +11,7 @@ pub fn version_text() -> String {
         env!("CARGO_PKG_VERSION"),
         env!("CPACTL_GIT_REVISION"),
         platform_name(),
-        std::env::consts::ARCH,
+        architecture_name(),
         build_time(),
     )
 }
@@ -38,6 +38,16 @@ const fn platform_name() -> &'static str {
         "darwin"
     } else {
         std::env::consts::OS
+    }
+}
+
+const fn architecture_name() -> &'static str {
+    if cfg!(target_arch = "aarch64") {
+        "arm64"
+    } else if cfg!(target_arch = "x86_64") {
+        "amd64"
+    } else {
+        std::env::consts::ARCH
     }
 }
 

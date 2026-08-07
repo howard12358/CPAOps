@@ -48,6 +48,17 @@ fn version_output_uses_compact_release_style_without_binary_hash() {
         .stdout(predicate::str::contains("二进制 SHA-256").not());
 }
 
+#[cfg(target_arch = "aarch64")]
+#[test]
+fn version_output_uses_arm64_platform_label() {
+    Command::cargo_bin("cpactl")
+        .unwrap()
+        .arg("-V")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("darwin/arm64"));
+}
+
 #[test]
 fn build_info_includes_binary_sha256() {
     Command::cargo_bin("cpactl")
