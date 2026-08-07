@@ -40,6 +40,11 @@ pub enum Command {
     },
     #[command(about = "查询并更新到 GitHub 最新 Release")]
     Update { service: Option<String> },
+    #[command(about = "检查或更新 cpactl 自身")]
+    Upgrade {
+        #[arg(long)]
+        check: bool,
+    },
     #[command(about = "切换到本机已验证的历史版本")]
     Rollback {
         service: String,

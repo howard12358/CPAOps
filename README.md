@@ -6,7 +6,19 @@
 
 ## 快速开始
 
-先从本仓库构建或安装 `cpactl`，然后在首次安装前提供两个私密配置值：
+macOS Apple Silicon 可直接安装正式 Release：
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/howard12358/CPAOps/v0.1.0/scripts/install.sh | bash
+```
+
+安装脚本会校验发布资产的 SHA-256，并安装用户级全局命令 `cpactl`。它会自动继承 `http_proxy`、`https_proxy`、`all_proxy` 环境变量。Windows 请使用 PowerShell：
+
+```powershell
+irm https://raw.githubusercontent.com/howard12358/CPAOps/v0.1.0/scripts/install.ps1 | iex
+```
+
+然后在首次安装前提供两个私密配置值：
 
 ```sh
 export CPA_MANAGEMENT_KEY='请使用自己的管理密钥'
@@ -26,6 +38,7 @@ cpactl update
 cpactl rollback keeper --version v1.2.3
 cpactl proxy set                 # 从 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY 保存代理
 cpactl uninstall                 # 保留运行数据
+cpactl upgrade                   # 更新 cpactl 自身
 ```
 
 默认运行目录为 macOS 的 `~/Library/Application Support/cpa-stack` 和 Windows 的 `C:\ProgramData\CPAStack`。可用 `--root <path>` 或 `CPA_STACK_ROOT` 覆盖，前者优先。

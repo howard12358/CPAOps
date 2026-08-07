@@ -33,11 +33,15 @@ cpactl restart [cli|keeper]
 cpactl status [--json]
 cpactl logs <cli|keeper> [-f] [-n 200]
 cpactl update [cli|keeper]
+cpactl upgrade [--check]
 cpactl rollback <cli|keeper> --version <version>
 cpactl proxy set|show|clear
-cpactl path
+cpactl auth login|status|logout
+cpactl path [--open|--shell]
 cpactl uninstall [--purge]
 ```
+
+`cpactl update` 只更新 CPA 和 Keeper；`cpactl upgrade` 只更新运维 CLI 本身。两者都会验证对应 GitHub Release 的 SHA-256。`upgrade --check` 只报告可用的新版本。
 
 `cli` 与 `cli-proxy-api` 等价；`keeper` 与 `cpa-usage-keeper` 等价。不带服务参数的启动、停止、重启和更新按顺序处理两个服务。
 

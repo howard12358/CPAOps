@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  package:
+    strategy:
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            asset: cpactl-${{ github.ref_name }}-darwin-arm64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset: cpactl-${{ github.ref_name }}-windows-amd64.zip
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: ${{ matrix.target }} }
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - run: cargo build --release --target ${{ matrix.target }}
+      - if: runner.os == 'macOS'
+        run: tar -C target/${{ matrix.target }}/release -czf ${{ matrix.asset }} cpactl
+      - if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path target/${{ matrix.target }}/release/cpactl.exe -DestinationPath ${{ matrix.asset }}
+      - uses: actions/upload-artifact@v4
+        with: { name: ${{ matrix.asset }}, path: ${{ matrix.asset }}
+  publish:
+    needs: package
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: dist, merge-multiple: true }
+      - run: cd dist && sha256sum cpactl-* > checksums.txt
+      - env: { GH_TOKEN: ${{ github.token }} }
+        run: gh release create "${{ github.ref_name }}" dist/cpactl-* dist/checksums.txt --generate-notes

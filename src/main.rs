@@ -29,6 +29,11 @@ fn main() {
             print_output(&output, cli.json);
             return Ok(());
         }
+        if let Command::Upgrade { check } = &cli.command {
+            let output = cpactl::upgrade::run(paths, *check)?;
+            print_output(&output, cli.json);
+            return Ok(());
+        }
         let platform = native_platform(paths.clone())?;
         let runtime_root = paths.root.clone();
         let interactive =

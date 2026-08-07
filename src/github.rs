@@ -55,6 +55,10 @@ impl GithubClient {
 
     pub async fn latest_release(&self, service: Service) -> Result<ReleaseMetadata, AppError> {
         let repository = ServiceCatalog::definition(service).repository;
+        self.latest_release_for(repository).await
+    }
+
+    pub async fn latest_release_for(&self, repository: &str) -> Result<ReleaseMetadata, AppError> {
         let endpoint = self
             .api_base
             .join(&format!("repos/{repository}/releases/latest"))

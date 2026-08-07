@@ -127,6 +127,9 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         let result = match command {
             Command::Install => self.install(),
             Command::Update { service } => self.update(service.as_deref()),
+            Command::Upgrade { .. } => {
+                Err(AppError::Internal("升级命令必须由 CLI 入口处理".into()))
+            }
             Command::Rollback { service, version } => self.rollback(service, version),
             Command::Path { shell, .. } => Ok(Output::success_with_data(
                 if *shell {

@@ -8,3 +8,4 @@ pub mod output;
 pub mod platform;
 pub mod progress;
 pub mod storage;
+pub mod upgrade;
