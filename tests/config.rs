@@ -229,6 +229,16 @@ fn proxy_from_url_uses_the_url_for_all_protocols() {
 }
 
 #[test]
+fn proxy_from_url_accepts_exported_environment_assignments() {
+    let proxy = ProxyConfig::from_url(
+        "export https_proxy=http://127.0.0.1:7897 http_proxy=http://127.0.0.1:7897 all_proxy=socks5://127.0.0.1:7897",
+    )
+    .unwrap();
+
+    assert_eq!(proxy.redacted_summary(), "已配置代理");
+}
+
+#[test]
 fn proxy_rejects_unknown_key_and_unsupported_scheme() {
     assert!(ProxyConfig::parse("ftp_proxy=http://host:7890").is_err());
     assert!(ProxyConfig::parse("https_proxy=ftp://host:7890").is_err());

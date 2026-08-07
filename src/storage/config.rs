@@ -248,6 +248,13 @@ impl ProxyConfig {
         if url.is_empty() {
             return Err(AppError::Usage("代理地址不能为空".into()));
         }
+        if url.starts_with("export ")
+            || url.starts_with("http_proxy=")
+            || url.starts_with("https_proxy=")
+            || url.starts_with("all_proxy=")
+        {
+            return Self::parse(url);
+        }
         Self::parse(&format!("all_proxy={url}"))
     }
 

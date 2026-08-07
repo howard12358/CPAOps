@@ -301,7 +301,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             return Ok(());
         }
 
-        eprint!("请输入代理地址（http://、https:// 或 socks5://）：");
+        eprint!("请输入代理地址或 export 代理环境变量：");
         io::stderr()
             .flush()
             .map_err(|_| AppError::Internal("无法写入代理输入提示".into()))?;
