@@ -302,11 +302,11 @@ async fn persist_download(
 
 #[cfg(test)]
 mod tests {
-    use super::browser_command;
-
     #[cfg(target_os = "macos")]
     #[test]
     fn browser_command_opens_the_verification_url_on_macos() {
+        use super::browser_command;
+
         let (program, arguments) = browser_command("https://github.com/login/device");
 
         assert_eq!(program, "open");
