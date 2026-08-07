@@ -293,7 +293,8 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
     }
 
     fn configure_proxy_before_release(&self) -> Result<(), AppError> {
-        if !self.interactive_proxy_prompt || self.config.load_proxy()?.is_some() {
+        let settings = GithubTokenStore::default_location();
+        if !self.interactive_proxy_prompt || settings.load_proxy()?.is_some() {
             return Ok(());
         }
 
@@ -318,7 +319,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             .read_line(&mut url)
             .map_err(|_| AppError::Internal("无法读取代理地址".into()))?;
         let proxy = ProxyConfig::from_url(&url)?;
-        self.config.save_proxy(&proxy)
+        settings.save_proxy(&proxy)
     }
 
     fn status_entry(&self, service: Service) -> Result<Value, AppError> {
