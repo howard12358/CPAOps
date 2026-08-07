@@ -137,11 +137,11 @@ fn replace_current_binary(_: &Path) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
-    use super::asset_name;
-
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn asset_name_uses_the_macos_release_convention() {
+        use super::asset_name;
+
         assert_eq!(asset_name("v0.1.0"), "cpactl-v0.1.0-darwin-arm64.tar.gz");
     }
 }
