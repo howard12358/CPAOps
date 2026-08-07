@@ -153,6 +153,26 @@ fn human_status_output_includes_each_service_state() {
 }
 
 #[test]
+fn human_status_output_explains_the_disabled_marker() {
+    let output = cpactl::output::Output::success_with_data(
+        "服务状态",
+        json!({
+            "services": [{
+                "service": "cli-proxy-api",
+                "status": "已禁用",
+                "port": 8317,
+                "version": "v7.2.121"
+            }]
+        }),
+    );
+
+    assert_eq!(
+        output.human_message(),
+        "服务状态\ncli-proxy-api：已停止（已禁用自动拉起）（端口 8317，版本 v7.2.121）"
+    );
+}
+
+#[test]
 fn human_workflow_output_includes_each_service_result() {
     let output = cpactl::output::Output::failure_with_data(
         7,

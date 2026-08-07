@@ -66,7 +66,11 @@ impl Output {
             output.push_str(name);
             output.push('：');
             if let Some(status) = service.get("status").and_then(Value::as_str) {
-                output.push_str(status);
+                if status == "已禁用" {
+                    output.push_str("已停止（已禁用自动拉起）");
+                } else {
+                    output.push_str(status);
+                }
                 if let Some(port) = service.get("port").and_then(Value::as_u64) {
                     output.push_str("（端口 ");
                     output.push_str(&port.to_string());
