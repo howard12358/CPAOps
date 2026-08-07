@@ -16,6 +16,10 @@ fn main() {
         println!("{}", cpactl::build_info::version_text());
         return;
     }
+    if arguments.len() == 2 && matches!(arguments[1].to_str(), Some("--build-info")) {
+        println!("{}", cpactl::build_info::build_info_text());
+        return;
+    }
     let cli = Cli::parse();
     let result = (|| {
         let paths = RuntimePaths::resolve(cli.root.clone())?;

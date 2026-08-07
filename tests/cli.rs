@@ -34,13 +34,27 @@ fn invalid_command_uses_usage_exit_code() {
 }
 
 #[test]
-fn version_output_includes_build_time_and_binary_sha256() {
+fn version_output_uses_compact_release_style_without_binary_hash() {
     Command::cargo_bin("cpactl")
         .unwrap()
         .arg("-V")
         .assert()
         .success()
-        .stdout(predicate::str::contains("编译时间："))
+        .stdout(predicate::str::starts_with("cpactl v0.1.0 ("))
+        .stdout(predicate::str::contains("built at: "))
+        .stdout(predicate::str::contains(
+            "https://github.com/howard12358/CPAOps",
+        ))
+        .stdout(predicate::str::contains("二进制 SHA-256").not());
+}
+
+#[test]
+fn build_info_includes_binary_sha256() {
+    Command::cargo_bin("cpactl")
+        .unwrap()
+        .arg("--build-info")
+        .assert()
+        .success()
         .stdout(predicate::str::contains("二进制 SHA-256："));
 }
 

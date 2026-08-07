@@ -19,6 +19,7 @@ rpassword = "7"
 tempfile = "3"
 thiserror = "2"
 tar = "0.4"
+time = { version = "=0.3.36", features = ["formatting"] }
 tokio = { version = "1", features = ["macros", "net", "rt-multi-thread", "io-util"] }
 toml = "0.8"
 url = "2"
