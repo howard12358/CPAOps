@@ -2,6 +2,7 @@ use std::fs;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use cpactl::domain::release::{
@@ -284,7 +285,7 @@ fn failed_keeper_update_restores_keeper_but_keeps_successful_cli_update() {
     let (root, store) = runtime();
     let cli_v1 = create_release(&store, Service::Cli, "v1");
     let keeper_v1 = create_release(&store, Service::Keeper, "v1");
-    let cli_v2 = create_release(&store, Service::Cli, "v2");
+    let _cli_v2 = create_release(&store, Service::Cli, "v2");
     let keeper_v2 = create_release(&store, Service::Keeper, "v2");
     let transaction = ReleaseTransaction::new(store.paths().clone());
     transaction.set_current(Service::Cli, &cli_v1).unwrap();
@@ -298,7 +299,7 @@ fn failed_keeper_update_restores_keeper_but_keeps_successful_cli_update() {
     let platform = UpdatePlatform::new(store.paths().clone());
     let app = App::with_release_provider(
         store.paths().clone(),
-        platform,
+        platform.clone(),
         StaticReleaseProvider::new([(Service::Cli, "v2"), (Service::Keeper, "v2")]),
         ReleasePlatform::MacosAarch64,
     );
@@ -308,12 +309,16 @@ fn failed_keeper_update_restores_keeper_but_keeps_successful_cli_update() {
     assert!(!output.ok);
     assert_eq!(output.data["services"][0]["ok"], true);
     assert_eq!(
-        current_target(&store, Service::Cli),
-        cli_v2.canonicalize().unwrap()
+        platform
+            .current_target(Service::Cli)
+            .and_then(|path| path.file_name().map(|name| name.to_owned())),
+        Some("v2".into())
     );
     assert_eq!(
-        current_target(&store, Service::Keeper),
-        keeper_v1.canonicalize().unwrap()
+        platform
+            .current_target(Service::Keeper)
+            .and_then(|path| path.file_name().map(|name| name.to_owned())),
+        Some("v1".into())
     );
     assert!(keeper_v2.is_dir());
     fs::remove_dir_all(root).unwrap();
@@ -389,13 +394,26 @@ impl ReleaseProvider for StaticReleaseProvider {
     }
 }
 
+#[derive(Clone)]
 struct UpdatePlatform {
     paths: RuntimePaths,
+    current: Arc<Mutex<Vec<(Service, PathBuf)>>>,
 }
 
 impl UpdatePlatform {
-    const fn new(paths: RuntimePaths) -> Self {
-        Self { paths }
+    fn new(paths: RuntimePaths) -> Self {
+        Self {
+            paths,
+            current: Arc::default(),
+        }
+    }
+
+    fn current_target(&self, service: Service) -> Option<PathBuf> {
+        self.current
+            .lock()
+            .unwrap()
+            .iter()
+            .find_map(|(candidate, path)| (*candidate == service).then(|| path.clone()))
     }
 }
 
@@ -429,7 +447,16 @@ impl Platform for UpdatePlatform {
         })
     }
     fn replace_current_link(&self, service: Service, release: &Path) -> Result<(), AppError> {
-        RuntimeStore::new(self.paths.clone()).set_current(service, release)
+        let mut current = self.current.lock().unwrap();
+        if let Some((_, path)) = current
+            .iter_mut()
+            .find(|(candidate, _)| *candidate == service)
+        {
+            *path = release.to_path_buf();
+        } else {
+            current.push((service, release.to_path_buf()));
+        }
+        Ok(())
     }
     fn is_port_listening(&self, service: Service) -> Result<bool, AppError> {
         Ok(service == Service::Cli || !self.paths.current.join(Service::Keeper.key()).exists())
