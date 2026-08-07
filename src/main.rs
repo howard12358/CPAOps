@@ -41,7 +41,7 @@ fn print_output(output: &Output, json: bool) {
     if json {
         println!("{}", output.to_json());
     } else {
-        println!("{}", output.message);
+        println!("{}", output.human_message());
     }
 }
 

@@ -108,6 +108,50 @@ fn logs_reads_both_service_files_and_honors_line_limit() {
 }
 
 #[test]
+fn keeper_logs_use_the_canonical_service_file_prefix() {
+    let fixture = Fixture::new();
+    fs::create_dir_all(&fixture.paths.logs).unwrap();
+    fs::write(
+        fixture.paths.logs.join("cpa-usage-keeper.err.log"),
+        "keeper-error\n",
+    )
+    .unwrap();
+
+    let output = fixture
+        .app()
+        .run(&CliCommand::Logs {
+            service: "keeper".into(),
+            follow: false,
+            lines: 200,
+        })
+        .unwrap();
+
+    assert_eq!(output.data["logs"][1]["lines"], json!(["keeper-error"]));
+}
+
+#[test]
+fn human_status_output_includes_each_service_state() {
+    let output = cpactl::output::Output::success_with_data(
+        "服务状态",
+        json!({
+            "services": [{
+                "service": "cli-proxy-api",
+                "status": "运行中",
+                "managed": true,
+                "listening": true,
+                "port": 8317,
+                "version": "7.2.120"
+            }]
+        }),
+    );
+
+    assert_eq!(
+        output.human_message(),
+        "服务状态\ncli-proxy-api：运行中（端口 8317，版本 7.2.120）"
+    );
+}
+
+#[test]
 fn stop_writes_disabled_marker_before_platform_stop() {
     let fixture = Fixture::new();
     fs::create_dir_all(&fixture.paths.root).unwrap();

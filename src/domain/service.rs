@@ -45,7 +45,7 @@ impl ServiceCatalog {
                 port: 18080,
                 macos_binary_name: "cpa-usage-keeper",
                 windows_binary_name: "cpa-usage-keeper.exe",
-                log_prefix: "keeper",
+                log_prefix: "cpa-usage-keeper",
                 launchd_label: "io.cpa-local.usage-keeper",
             },
         }
