@@ -134,9 +134,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             Command::Proxy { action } => self.proxy(action),
             Command::Uninstall { purge } => self.uninstall(*purge),
         };
-        if result.is_err() {
-            self.progress.clear();
-        }
+        self.progress.clear();
         result
     }
 
