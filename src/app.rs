@@ -190,10 +190,15 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         let services = resolve_services(service_name)?;
         let mut results = Vec::with_capacity(services.len());
         for service in services {
-            let result = self
-                .prepare_release(service)
-                .and_then(|version| self.activate_release(service, &version));
-            results.push(workflow_result(service, result));
+            let result = self.prepare_release(service).and_then(|version| {
+                if self.current_version(service)?.as_deref() == Some(version.as_str()) {
+                    Ok((version, "up_to_date"))
+                } else {
+                    self.activate_release(service, &version)?;
+                    Ok((version, "updated"))
+                }
+            });
+            results.push(update_workflow_result(service, result));
         }
         workflow_output("更新", results)
     }
@@ -451,6 +456,26 @@ impl<P: Platform> ServiceLifecycle for PlatformLifecycle<'_, P> {
 fn workflow_result(service: Service, result: Result<(), AppError>) -> Value {
     match result {
         Ok(()) => json!({ "service": service.key(), "ok": true }),
+        Err(error) => json!({
+            "service": service.key(),
+            "ok": false,
+            "code": error.exit_code(),
+            "message": error.to_string(),
+        }),
+    }
+}
+
+fn update_workflow_result(
+    service: Service,
+    result: Result<(String, &'static str), AppError>,
+) -> Value {
+    match result {
+        Ok((version, state)) => json!({
+            "service": service.key(),
+            "ok": true,
+            "version": version,
+            "state": state,
+        }),
         Err(error) => json!({
             "service": service.key(),
             "ok": false,

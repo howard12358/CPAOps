@@ -332,6 +332,42 @@ fn failed_keeper_update_restores_keeper_but_keeps_successful_cli_update() {
 }
 
 #[test]
+fn update_reports_when_a_service_is_already_at_the_latest_version() {
+    let (root, store) = runtime();
+    let current = create_release(&store, Service::Cli, "v1");
+    ReleaseTransaction::new(store.paths().clone())
+        .set_current(Service::Cli, &current)
+        .unwrap();
+    ConfigStore::new(store.paths().clone())
+        .initialize("management-key", "keeper-password")
+        .unwrap();
+    let platform = UpdatePlatform::new(store.paths().clone());
+    let app = App::with_release_provider(
+        store.paths().clone(),
+        platform,
+        StaticReleaseProvider::new([(Service::Cli, "v1")]),
+        ReleasePlatform::MacosAarch64,
+    );
+
+    let output = app
+        .run(&Command::Update {
+            service: Some("cli".into()),
+        })
+        .unwrap();
+
+    assert_eq!(
+        output.data["services"][0],
+        serde_json::json!({
+            "service": "cli-proxy-api",
+            "ok": true,
+            "version": "v1",
+            "state": "up_to_date"
+        })
+    );
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn rollback_rejects_version_not_present_in_verified_releases() {
     let (root, store) = runtime();
     let version = release_dir(&store, Service::Cli, "v2");

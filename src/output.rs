@@ -77,7 +77,17 @@ impl Output {
                     output.push('）');
                 }
             } else if service.get("ok").and_then(Value::as_bool) == Some(true) {
-                output.push_str("成功");
+                let version = service.get("version").and_then(Value::as_str);
+                if service.get("state").and_then(Value::as_str) == Some("up_to_date") {
+                    output.push_str("已是最新版本");
+                } else {
+                    output.push_str("成功");
+                }
+                if let Some(version) = version {
+                    output.push('（');
+                    output.push_str(version);
+                    output.push('）');
+                }
             } else {
                 output.push_str("失败");
                 if let Some(message) = service.get("message").and_then(Value::as_str) {
