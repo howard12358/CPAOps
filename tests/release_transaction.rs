@@ -79,10 +79,10 @@ fn current_target(store: &RuntimeStore, service: Service) -> PathBuf {
     fs::canonicalize(store.paths().current.join(service.key())).unwrap()
 }
 
-#[derive(Default)]
 struct FakeLifecycle {
     running: bool,
     healthy: bool,
+    paths: RuntimePaths,
 }
 
 impl ServiceLifecycle for FakeLifecycle {
@@ -107,6 +107,18 @@ impl ServiceLifecycle for FakeLifecycle {
 
     fn is_healthy(&mut self, _: Service) -> Result<bool, cpactl::domain::error::AppError> {
         Ok(self.healthy)
+    }
+
+    fn replace_current(
+        &mut self,
+        service: Service,
+        release: &Path,
+    ) -> Result<(), cpactl::domain::error::AppError> {
+        RuntimeStore::new(self.paths.clone()).set_current(service, release)
+    }
+
+    fn clear_current(&mut self, service: Service) -> Result<(), cpactl::domain::error::AppError> {
+        RuntimeStore::new(self.paths.clone()).clear_current(service)
     }
 }
 
@@ -162,6 +174,7 @@ fn failed_health_check_restores_previous_release_and_running_state() {
     let mut lifecycle = FakeLifecycle {
         running: true,
         healthy: false,
+        paths: store.paths().clone(),
     };
 
     assert!(
@@ -189,6 +202,7 @@ fn activating_keeper_copies_database_wal_and_shm_to_one_backup() {
     let mut lifecycle = FakeLifecycle {
         running: false,
         healthy: true,
+        paths: store.paths().clone(),
     };
 
     transaction
@@ -292,6 +306,7 @@ fn failed_keeper_update_restores_keeper_but_keeps_successful_cli_update() {
     let output = app.run(&Command::Update { service: None }).unwrap();
 
     assert!(!output.ok);
+    assert_eq!(output.data["services"][0]["ok"], true);
     assert_eq!(
         current_target(&store, Service::Cli),
         cli_v2.canonicalize().unwrap()
@@ -413,8 +428,8 @@ impl Platform for UpdatePlatform {
             listening: true,
         })
     }
-    fn replace_current_link(&self, _: Service, _: &Path) -> Result<(), AppError> {
-        Ok(())
+    fn replace_current_link(&self, service: Service, release: &Path) -> Result<(), AppError> {
+        RuntimeStore::new(self.paths.clone()).set_current(service, release)
     }
     fn is_port_listening(&self, service: Service) -> Result<bool, AppError> {
         Ok(service == Service::Cli || !self.paths.current.join(Service::Keeper.key()).exists())

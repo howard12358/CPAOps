@@ -163,6 +163,8 @@ fn parse_checksum_line(line: &str) -> Option<(&str, &str)> {
 }
 
 pub trait ServiceLifecycle {
+    fn replace_current(&mut self, service: Service, release: &Path) -> Result<(), AppError>;
+    fn clear_current(&mut self, service: Service) -> Result<(), AppError>;
     fn is_running(&mut self, service: Service) -> Result<bool, AppError>;
     fn start(&mut self, service: Service) -> Result<(), AppError>;
     fn stop(&mut self, service: Service) -> Result<(), AppError>;
@@ -264,7 +266,7 @@ impl ReleaseTransaction {
         if service == Service::Keeper {
             self.store.backup_keeper_database()?;
         }
-        self.store.set_current(service, &target)?;
+        lifecycle.replace_current(service, &target)?;
 
         let activation_result = if was_running {
             lifecycle.restart(service)
@@ -298,9 +300,9 @@ impl ReleaseTransaction {
         lifecycle: &mut L,
     ) -> Result<(), AppError> {
         if let Some(previous_target) = previous_target {
-            self.store.set_current(service, previous_target)?;
+            lifecycle.replace_current(service, previous_target)?;
         } else {
-            self.store.clear_current(service)?;
+            lifecycle.clear_current(service)?;
         }
 
         if was_running {

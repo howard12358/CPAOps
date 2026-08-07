@@ -204,6 +204,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         let transaction = ReleaseTransaction::new(self.paths.clone());
         let mut lifecycle = PlatformLifecycle {
             platform: &self.platform,
+            paths: &self.paths,
         };
         transaction.activate(service, version, &mut lifecycle)
     }
@@ -347,9 +348,18 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
 
 struct PlatformLifecycle<'a, P> {
     platform: &'a P,
+    paths: &'a RuntimePaths,
 }
 
 impl<P: Platform> ServiceLifecycle for PlatformLifecycle<'_, P> {
+    fn replace_current(&mut self, service: Service, release: &Path) -> Result<(), AppError> {
+        self.platform.replace_current_link(service, release)
+    }
+
+    fn clear_current(&mut self, service: Service) -> Result<(), AppError> {
+        RuntimeStore::new(self.paths.clone()).clear_current(service)
+    }
+
     fn is_running(&mut self, service: Service) -> Result<bool, AppError> {
         Ok(self.platform.status(service)?.listening)
     }
