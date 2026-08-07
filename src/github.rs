@@ -22,7 +22,6 @@ const USER_AGENT: &str = "cpactl";
 #[derive(Clone)]
 pub struct GithubClient {
     api_base: Url,
-    config: ConfigStore,
     token_store: GithubTokenStore,
 }
 
@@ -40,7 +39,7 @@ impl GithubClient {
     }
 
     pub fn with_api_base_and_token_store(
-        config: ConfigStore,
+        _config: ConfigStore,
         api_base: impl AsRef<str>,
         token_store: GithubTokenStore,
     ) -> Result<Self, AppError> {
@@ -48,7 +47,6 @@ impl GithubClient {
             .map_err(|_| AppError::Usage("GitHub API 地址无效".into()))?;
         Ok(Self {
             api_base,
-            config,
             token_store,
         })
     }
@@ -96,7 +94,7 @@ impl GithubClient {
 
     async fn device_login_inner(&self) -> Result<String, AppError> {
         eprintln!("正在请求 GitHub 授权…");
-        let client = build_client(self.config.load_proxy()?)?;
+        let client = build_client(self.token_store.load_proxy()?)?;
         let response = client
             .post(GITHUB_DEVICE_CODE_URL)
             .header(reqwest::header::ACCEPT, "application/json")
@@ -168,7 +166,7 @@ impl GithubClient {
     }
 
     async fn get(&self, url: Url) -> Result<Response, AppError> {
-        let client = build_client(self.config.load_proxy()?)?;
+        let client = build_client(self.token_store.load_proxy()?)?;
         let response = client
             .get(url.clone())
             .send()

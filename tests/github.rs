@@ -208,7 +208,7 @@ async fn sends_github_requests_through_saved_socks5_proxy() {
     let root = test_root();
     let config = config_store(&root);
     let proxy = ProxyConfig::parse(&format!("all_proxy={}", socks.url)).unwrap();
-    config.save_proxy(&proxy).unwrap();
+    token_store(&root).save_proxy(&proxy).unwrap();
     let client = client(&root, config, &server.base_url);
 
     let release = client.latest_release(Service::Cli).await.unwrap();

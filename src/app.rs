@@ -17,7 +17,7 @@ use crate::github::GithubClient;
 use crate::output::Output;
 use crate::platform::{Platform, ServiceStatus};
 use crate::progress::{NoProgress, ProgressReporter};
-use crate::storage::config::{ConfigStore, ProxyConfig};
+use crate::storage::config::{ConfigStore, GithubTokenStore, ProxyConfig};
 use crate::storage::filesystem::RuntimeStore;
 
 pub trait ReleaseProvider {
@@ -397,22 +397,23 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
     }
 
     fn proxy(&self, action: &ProxyAction) -> Result<Output, AppError> {
+        let settings = GithubTokenStore::default_location();
         match action {
             ProxyAction::Show => Ok(Output::success_with_data(
-                if self.config.load_proxy()?.is_some() {
+                if settings.load_proxy()?.is_some() {
                     "已配置代理"
                 } else {
                     "未配置代理"
                 },
-                json!({ "configured": self.config.load_proxy()?.is_some() }),
+                json!({ "configured": settings.load_proxy()?.is_some() }),
             )),
             ProxyAction::Clear => {
-                self.config.clear_proxy()?;
+                settings.clear_proxy()?;
                 Ok(Output::success("已清除代理"))
             }
             ProxyAction::Set => {
                 let proxy = proxy_from_environment()?;
-                self.config.save_proxy(&proxy)?;
+                settings.save_proxy(&proxy)?;
                 Ok(Output::success("已保存代理"))
             }
         }

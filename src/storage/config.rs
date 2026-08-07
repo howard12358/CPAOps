@@ -31,9 +31,9 @@ pub struct GithubTokenStore {
 impl GithubTokenStore {
     pub fn default_location() -> Self {
         let config = if cfg!(target_os = "windows") {
-            env::var_os("ProgramData")
+            env::var_os("LOCALAPPDATA")
                 .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from(r"C:\\ProgramData"))
+                .unwrap_or_else(|| PathBuf::from(r"C:\\Users\\Default\\AppData\\Local"))
                 .join("CPAStack/config")
         } else {
             env::var_os("HOME")
@@ -84,6 +84,47 @@ impl GithubTokenStore {
                 "无法清除 GitHub Token：{error}"
             ))),
         }
+    }
+
+    pub fn load_proxy(&self) -> Result<Option<ProxyConfig>, AppError> {
+        let path = self.proxy_path();
+        if !path.exists() {
+            return Ok(None);
+        }
+        let contents =
+            fs::read_to_string(&path).map_err(|_| AppError::State("代理配置无法读取".into()))?;
+        let stored: StoredProxyConfig =
+            toml::from_str(&contents).map_err(|_| AppError::State("代理配置格式无效".into()))?;
+        let proxy = ProxyConfig::from(stored);
+        proxy.validate()?;
+        ensure_private_file(&path)?;
+        Ok(Some(proxy))
+    }
+
+    pub fn save_proxy(&self, proxy: &ProxyConfig) -> Result<(), AppError> {
+        proxy.validate()?;
+        let directory = self
+            .path
+            .parent()
+            .ok_or_else(|| AppError::Internal("GitHub 配置路径无效".into()))?;
+        fs::create_dir_all(directory)
+            .map_err(|error| AppError::Permission(format!("无法创建 GitHub 配置目录：{error}")))?;
+        set_private_directory(directory)?;
+        let contents = toml::to_string(&StoredProxyConfig::from(proxy))
+            .map_err(|_| AppError::Internal("代理配置无法序列化".into()))?;
+        write_private_file(&self.proxy_path(), &contents)
+    }
+
+    pub fn clear_proxy(&self) -> Result<(), AppError> {
+        match fs::remove_file(self.proxy_path()) {
+            Ok(()) => Ok(()),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+            Err(error) => Err(AppError::Permission(format!("无法清除代理配置：{error}"))),
+        }
+    }
+
+    fn proxy_path(&self) -> PathBuf {
+        self.path.with_file_name("proxy.toml")
     }
 }
 
