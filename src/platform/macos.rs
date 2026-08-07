@@ -66,7 +66,7 @@ impl<R: CommandRunner> MacosPlatform<R> {
     }
 
     fn run_required(&self, program: &str, args: Vec<OsString>) -> Result<(), AppError> {
-        let CommandOutput { success } = self.runner.run(program, &args)?;
+        let CommandOutput { success, .. } = self.runner.run(program, &args)?;
         if success {
             Ok(())
         } else {

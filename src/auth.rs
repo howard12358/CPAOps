@@ -33,7 +33,10 @@ fn login(
         ));
     }
     let token = if use_manual_token {
-        rpassword::prompt_password("请输入 GitHub Personal Access Token：")
+        eprint!("请输入 GitHub Personal Access Token：");
+        io::Write::flush(&mut io::stderr())
+            .map_err(|_| AppError::Internal("无法写入 GitHub Token 提示".into()))?;
+        rpassword::read_password()
             .map_err(|_| AppError::Internal("无法读取 GitHub Token".into()))?
     } else {
         GithubClient::new(config.clone())?.device_login()?

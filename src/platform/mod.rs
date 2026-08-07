@@ -45,15 +45,22 @@ pub fn native_platform(
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CommandOutput {
     pub success: bool,
+    pub stderr: String,
 }
 
 impl CommandOutput {
     pub const fn success() -> Self {
-        Self { success: true }
+        Self {
+            success: true,
+            stderr: String::new(),
+        }
     }
 
     pub const fn failure() -> Self {
-        Self { success: false }
+        Self {
+            success: false,
+            stderr: String::new(),
+        }
     }
 }
 
@@ -78,6 +85,7 @@ impl CommandRunner for ProcessCommandRunner {
             .map_err(|_| AppError::Service("无法执行系统服务管理命令".into()))?;
         Ok(CommandOutput {
             success: output.status.success(),
+            stderr: String::from_utf8_lossy(&output.stderr).trim().into(),
         })
     }
 }

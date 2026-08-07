@@ -592,7 +592,11 @@ fn install_secret(environment: &str, prompt: &str) -> Result<String, AppError> {
             "首次安装请设置 {environment} 环境变量，或在交互式终端中运行"
         )));
     }
-    rpassword::prompt_password(prompt).map_err(|_| AppError::Internal("无法读取私密配置值".into()))
+    eprint!("{prompt}");
+    io::stderr()
+        .flush()
+        .map_err(|_| AppError::Internal("无法写入私密配置提示".into()))?;
+    rpassword::read_password().map_err(|_| AppError::Internal("无法读取私密配置值".into()))
 }
 
 fn resolve_services(name: Option<&str>) -> Result<Vec<Service>, AppError> {

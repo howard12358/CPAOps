@@ -50,11 +50,11 @@ impl<R: CommandRunner> WindowsPlatform<R> {
     }
 
     fn run_required(&self, program: &str, args: Vec<OsString>) -> Result<(), AppError> {
-        let CommandOutput { success } = self.runner.run(program, &args)?;
-        if success {
+        let output = self.runner.run(program, &args)?;
+        if output.success {
             Ok(())
         } else {
-            Err(AppError::Service("系统服务管理命令执行失败".into()))
+            Err(command_failure("系统服务管理命令执行失败", output))
         }
     }
 
@@ -83,10 +83,11 @@ impl<R: CommandRunner> WindowsPlatform<R> {
         script: &str,
         parameters: Vec<OsString>,
     ) -> Result<(), AppError> {
-        if self.run_powershell(script, parameters)?.success {
+        let output = self.run_powershell(script, parameters)?;
+        if output.success {
             Ok(())
         } else {
-            Err(AppError::Service("Windows 服务管理命令执行失败".into()))
+            Err(command_failure("Windows 服务管理命令执行失败", output))
         }
     }
 
@@ -153,6 +154,14 @@ impl<R: CommandRunner> WindowsPlatform<R> {
             .map_err(|_| AppError::State("无法创建服务状态目录".into()))?;
         fs::write(self.paths.disabled_file(service), b"disabled\n")
             .map_err(|_| AppError::State("无法写入服务停用标记".into()))
+    }
+}
+
+fn command_failure(prefix: &str, output: CommandOutput) -> AppError {
+    if output.stderr.is_empty() {
+        AppError::Service(prefix.into())
+    } else {
+        AppError::Service(format!("{prefix}：{}", output.stderr))
     }
 }
 
