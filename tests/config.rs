@@ -222,6 +222,13 @@ fn proxy_store_round_trip_does_not_require_exposing_url() {
 }
 
 #[test]
+fn proxy_from_url_uses_the_url_for_all_protocols() {
+    let proxy = ProxyConfig::from_url("socks5://127.0.0.1:7890").unwrap();
+
+    assert_eq!(proxy.redacted_summary(), "已配置代理");
+}
+
+#[test]
 fn proxy_rejects_unknown_key_and_unsupported_scheme() {
     assert!(ProxyConfig::parse("ftp_proxy=http://host:7890").is_err());
     assert!(ProxyConfig::parse("https_proxy=ftp://host:7890").is_err());

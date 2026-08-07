@@ -76,6 +76,7 @@ pub struct App<P, R = GithubClient> {
     release_provider: R,
     release_platform: Option<ReleasePlatform>,
     progress: Arc<dyn ProgressReporter>,
+    interactive_proxy_prompt: bool,
 }
 
 impl<P: Platform> App<P, GithubClient> {
@@ -89,6 +90,7 @@ impl<P: Platform> App<P, GithubClient> {
             platform,
             release_platform: None,
             progress: Arc::new(NoProgress),
+            interactive_proxy_prompt: false,
         }
     }
 }
@@ -107,11 +109,17 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             release_provider,
             release_platform: Some(release_platform),
             progress: Arc::new(NoProgress),
+            interactive_proxy_prompt: false,
         }
     }
 
     pub fn with_progress(mut self, progress: Arc<dyn ProgressReporter>) -> Self {
         self.progress = progress;
+        self
+    }
+
+    pub fn with_interactive_proxy_prompt(mut self, enabled: bool) -> Self {
+        self.interactive_proxy_prompt = enabled;
         self
     }
 
@@ -166,6 +174,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         RuntimeStore::new(self.paths.clone()).ensure_layout()?;
         self.initialize_config_for_install()?;
         self.config.validate()?;
+        self.configure_proxy_before_release()?;
 
         let releases = [Service::Cli, Service::Keeper]
             .into_iter()
@@ -273,6 +282,35 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             install_secret("KEEPER_LOGIN_PASSWORD", "请输入 Keeper 登录密码：")?;
         self.config
             .initialize(&management_key, &keeper_login_password)
+    }
+
+    fn configure_proxy_before_release(&self) -> Result<(), AppError> {
+        if !self.interactive_proxy_prompt || self.config.load_proxy()?.is_some() {
+            return Ok(());
+        }
+
+        eprint!("未配置下载代理，是否现在配置？[y/N] ");
+        io::stderr()
+            .flush()
+            .map_err(|_| AppError::Internal("无法写入代理确认提示".into()))?;
+        let mut confirmation = String::new();
+        io::stdin()
+            .read_line(&mut confirmation)
+            .map_err(|_| AppError::Internal("无法读取代理确认输入".into()))?;
+        if !matches!(confirmation.trim(), "y" | "Y" | "yes" | "YES") {
+            return Ok(());
+        }
+
+        eprint!("请输入代理地址（http://、https:// 或 socks5://）：");
+        io::stderr()
+            .flush()
+            .map_err(|_| AppError::Internal("无法写入代理输入提示".into()))?;
+        let mut url = String::new();
+        io::stdin()
+            .read_line(&mut url)
+            .map_err(|_| AppError::Internal("无法读取代理地址".into()))?;
+        let proxy = ProxyConfig::from_url(&url)?;
+        self.config.save_proxy(&proxy)
     }
 
     fn status_entry(&self, service: Service) -> Result<Value, AppError> {

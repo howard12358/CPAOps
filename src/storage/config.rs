@@ -243,6 +243,14 @@ impl From<&ProxyConfig> for StoredProxyConfig {
 }
 
 impl ProxyConfig {
+    pub fn from_url(url: &str) -> Result<Self, AppError> {
+        let url = url.trim();
+        if url.is_empty() {
+            return Err(AppError::Usage("代理地址不能为空".into()));
+        }
+        Self::parse(&format!("all_proxy={url}"))
+    }
+
     pub fn parse(input: &str) -> Result<Self, AppError> {
         let assignments = input.strip_prefix("export ").unwrap_or(input);
         let mut proxy = Self {

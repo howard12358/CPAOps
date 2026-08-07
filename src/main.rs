@@ -24,12 +24,16 @@ fn main() {
     let result = (|| {
         let paths = RuntimePaths::resolve(cli.root.clone())?;
         let platform = native_platform(paths.clone())?;
-        let progress: Arc<dyn ProgressReporter> = if !cli.json && std::io::stderr().is_terminal() {
+        let interactive =
+            !cli.json && std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
+        let progress: Arc<dyn ProgressReporter> = if interactive {
             Arc::new(TerminalProgress::new())
         } else {
             Arc::new(NoProgress)
         };
-        let app = App::new(paths, platform).with_progress(progress);
+        let app = App::new(paths, platform)
+            .with_progress(progress)
+            .with_interactive_proxy_prompt(interactive);
         let output = app.run(&cli.command)?;
         print_output(&output, cli.json);
         if !output.ok {
