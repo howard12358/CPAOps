@@ -1,6 +1,7 @@
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use futures_util::StreamExt;
 use reqwest::{Client, Proxy, Response, StatusCode, Url};
@@ -90,6 +91,7 @@ impl GithubClient {
     }
 
     async fn device_login_inner(&self) -> Result<String, AppError> {
+        eprintln!("正在请求 GitHub 授权…");
         let client = build_client(self.config.load_proxy()?)?;
         let response = client
             .post(GITHUB_DEVICE_CODE_URL)
@@ -110,7 +112,11 @@ impl GithubClient {
         let verification_uri = device
             .verification_uri
             .ok_or_else(|| AppError::Network("GitHub 认证响应缺少授权地址".into()))?;
-        eprintln!("请在浏览器打开：{verification_uri}");
+        if open_default_browser(&verification_uri) {
+            eprintln!("已打开默认浏览器；如未显示页面，请手动打开：{verification_uri}");
+        } else {
+            eprintln!("无法打开默认浏览器，请手动打开：{verification_uri}");
+        }
         eprintln!("输入一次性验证码：{user_code}");
         eprintln!("等待 GitHub 授权完成…");
 
@@ -180,6 +186,29 @@ impl GithubClient {
             .await
             .map_err(|_| AppError::Network("无法访问 GitHub，请检查网络或代理配置".into()))?;
         checked_response(response)
+    }
+}
+
+fn open_default_browser(url: &str) -> bool {
+    let (program, arguments) = browser_command(url);
+    Command::new(program)
+        .args(arguments)
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+fn browser_command(url: &str) -> (&'static str, Vec<&str>) {
+    #[cfg(target_os = "macos")]
+    {
+        ("open", vec![url])
+    }
+    #[cfg(target_os = "windows")]
+    {
+        ("cmd", vec!["/C", "start", "", url])
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        ("xdg-open", vec![url])
     }
 }
 
@@ -267,4 +296,18 @@ async fn persist_download(
         .persist(destination)
         .map_err(|_| AppError::Permission("无法完成下载文件写入".into()))?;
     Ok(destination.into())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::browser_command;
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn browser_command_opens_the_verification_url_on_macos() {
+        let (program, arguments) = browser_command("https://github.com/login/device");
+
+        assert_eq!(program, "open");
+        assert_eq!(arguments, vec!["https://github.com/login/device"]);
+    }
 }
