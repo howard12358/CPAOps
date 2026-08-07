@@ -8,7 +8,7 @@ use time::format_description::well_known::Rfc3339;
 pub fn version_text() -> String {
     format!(
         "cpactl v{} ({}) {}/{}\nbuilt at: {}\nhttps://github.com/howard12358/CPAOps",
-        env!("CARGO_PKG_VERSION"),
+        env!("CPACTL_RELEASE_VERSION"),
         env!("CPACTL_GIT_REVISION"),
         platform_name(),
         architecture_name(),

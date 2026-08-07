@@ -40,7 +40,7 @@ fn version_output_uses_compact_release_style_without_binary_hash() {
         .arg("-V")
         .assert()
         .success()
-        .stdout(predicate::str::starts_with("cpactl v0.1.0 ("))
+        .stdout(predicate::str::starts_with("cpactl v"))
         .stdout(predicate::str::contains("built at: "))
         .stdout(predicate::str::contains(
             "https://github.com/howard12358/CPAOps",

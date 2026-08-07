@@ -33,7 +33,7 @@ fn run_inner(
         .build()
         .map_err(|_| AppError::Internal("无法初始化升级运行时".into()))?;
     let release = runtime.block_on(client.latest_release_for(REPOSITORY))?;
-    let current = env!("CARGO_PKG_VERSION");
+    let current = env!("CPACTL_RELEASE_VERSION");
     if release.tag.trim_start_matches('v') == current {
         return Ok(Output::success(format!("已是最新版本（{}）", release.tag)));
     }
