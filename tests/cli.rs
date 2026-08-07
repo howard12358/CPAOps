@@ -45,6 +45,25 @@ fn version_output_includes_build_time_and_binary_sha256() {
 }
 
 #[test]
+fn help_lists_each_command_with_its_chinese_purpose() {
+    let output = Command::cargo_bin("cpactl")
+        .unwrap()
+        .arg("-h")
+        .output()
+        .unwrap();
+    assert!(output.status.success());
+    let help = String::from_utf8(output.stdout).unwrap();
+    let commands = help
+        .split_once("Commands:\n")
+        .and_then(|(_, rest)| rest.split_once("Options:"))
+        .map(|(section, _)| section)
+        .unwrap();
+
+    assert!(commands.contains("install    安装或修复服务"));
+    assert!(commands.contains("update     查询并更新到 GitHub 最新 Release"));
+}
+
+#[test]
 fn path_json_is_emitted_by_the_binary() {
     let root = TempDir::new().unwrap();
     Command::cargo_bin("cpactl")
