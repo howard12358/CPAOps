@@ -17,9 +17,11 @@ use cpactl::{
     domain::error::AppError,
     platform::{Platform, ServiceStatus},
 };
-use flate2::Compression;
-use flate2::write::GzEncoder;
+#[cfg(unix)]
+use flate2::{Compression, write::GzEncoder};
+#[cfg(unix)]
 use sha2::{Digest, Sha256};
+#[cfg(unix)]
 use tar::Builder;
 
 static TEST_ROOT_COUNTER: AtomicU64 = AtomicU64::new(0);
