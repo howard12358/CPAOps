@@ -103,11 +103,35 @@ fn path_json_is_emitted_by_the_binary() {
 #[test]
 fn path_reports_the_resolved_runtime_root() {
     let fixture = Fixture::new();
-    let output = fixture.app().run(&CliCommand::Path).unwrap();
+    let output = fixture
+        .app()
+        .run(&CliCommand::Path {
+            open: false,
+            shell: false,
+        })
+        .unwrap();
 
     assert_eq!(
         output.data,
         json!({ "root": fixture.paths.root.display().to_string() })
+    );
+}
+
+#[cfg(unix)]
+#[test]
+fn path_shell_output_can_be_pasted_into_a_terminal() {
+    let fixture = Fixture::new();
+    let output = fixture
+        .app()
+        .run(&CliCommand::Path {
+            open: false,
+            shell: true,
+        })
+        .unwrap();
+
+    assert_eq!(
+        output.message,
+        format!("cd -- '{}'", fixture.paths.root.display())
     );
 }
 

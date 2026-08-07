@@ -56,8 +56,13 @@ pub enum Command {
         #[command(subcommand)]
         action: AuthAction,
     },
-    #[command(about = "输出当前运行目录")]
-    Path,
+    #[command(about = "输出运行目录；--open 打开目录，--shell 输出可粘贴的跳转命令")]
+    Path {
+        #[arg(long, conflicts_with = "shell")]
+        open: bool,
+        #[arg(long)]
+        shell: bool,
+    },
     #[command(about = "移除服务定义；--purge 删除运行数据")]
     Uninstall {
         #[arg(long)]

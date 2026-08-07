@@ -6,6 +6,7 @@ use cpactl::domain::runtime::RuntimePaths;
 use cpactl::output::Output;
 use cpactl::platform::native_platform;
 use cpactl::progress::{NoProgress, ProgressReporter, TerminalProgress};
+use std::process::Command as ProcessCommand;
 use std::thread;
 use std::time::Duration;
 use std::{io::IsTerminal, sync::Arc};
@@ -29,6 +30,7 @@ fn main() {
             return Ok(());
         }
         let platform = native_platform(paths.clone())?;
+        let runtime_root = paths.root.clone();
         let interactive =
             !cli.json && std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
         let progress: Arc<dyn ProgressReporter> = if interactive {
@@ -40,6 +42,9 @@ fn main() {
             .with_progress(progress)
             .with_interactive_proxy_prompt(interactive);
         let output = app.run(&cli.command)?;
+        if let Command::Path { open: true, .. } = &cli.command {
+            open_directory(&runtime_root)?;
+        }
         print_output(&output, cli.json);
         if !output.ok {
             std::process::exit(i32::from(output.code));
@@ -60,6 +65,21 @@ fn main() {
         print_failure(&error, cli.json);
         std::process::exit(i32::from(error.exit_code()));
     }
+}
+
+fn open_directory(path: &std::path::Path) -> Result<(), AppError> {
+    #[cfg(target_os = "macos")]
+    let result = ProcessCommand::new("open").arg(path).status();
+    #[cfg(target_os = "windows")]
+    let result = ProcessCommand::new("explorer").arg(path).status();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let result = ProcessCommand::new("xdg-open").arg(path).status();
+
+    result
+        .map_err(|_| AppError::State("无法打开运行目录".into()))?
+        .success()
+        .then_some(())
+        .ok_or_else(|| AppError::State("无法打开运行目录".into()))
 }
 
 fn print_output(output: &Output, json: bool) {

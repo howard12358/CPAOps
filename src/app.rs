@@ -128,8 +128,12 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             Command::Install => self.install(),
             Command::Update { service } => self.update(service.as_deref()),
             Command::Rollback { service, version } => self.rollback(service, version),
-            Command::Path => Ok(Output::success_with_data(
-                self.paths.root.display().to_string(),
+            Command::Path { shell, .. } => Ok(Output::success_with_data(
+                if *shell {
+                    shell_change_directory(&self.paths.root)
+                } else {
+                    self.paths.root.display().to_string()
+                },
                 json!({ "root": self.paths.root.display().to_string() }),
             )),
             Command::Status => self.status(),
@@ -557,6 +561,23 @@ fn release_asset_name(name: &str) -> Result<&str, AppError> {
         return Err(AppError::Verification("Release 资产文件名无效".into()));
     }
     Ok(name)
+}
+
+#[cfg(unix)]
+fn shell_change_directory(path: &Path) -> String {
+    let path = path.display().to_string().replace('\'', "'\"'\"'");
+    format!("cd -- '{path}'")
+}
+
+#[cfg(windows)]
+fn shell_change_directory(path: &Path) -> String {
+    let path = path.display().to_string().replace('\'', "''");
+    format!("Set-Location -LiteralPath '{path}'")
+}
+
+#[cfg(not(any(unix, windows)))]
+fn shell_change_directory(path: &Path) -> String {
+    path.display().to_string()
 }
 
 fn install_secret(environment: &str, prompt: &str) -> Result<String, AppError> {
