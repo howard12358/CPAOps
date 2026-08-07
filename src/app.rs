@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use serde_json::{Value, json};
 
@@ -15,12 +16,21 @@ use crate::domain::service::{Service, ServiceCatalog};
 use crate::github::GithubClient;
 use crate::output::Output;
 use crate::platform::{Platform, ServiceStatus};
+use crate::progress::{NoProgress, ProgressReporter};
 use crate::storage::config::{ConfigStore, ProxyConfig};
 use crate::storage::filesystem::RuntimeStore;
 
 pub trait ReleaseProvider {
     fn latest_release(&self, service: Service) -> Result<ReleaseMetadata, AppError>;
     fn download(&self, url: &str, destination: &Path) -> Result<PathBuf, AppError>;
+    fn download_with_progress(
+        &self,
+        url: &str,
+        destination: &Path,
+        _: &dyn ProgressReporter,
+    ) -> Result<PathBuf, AppError> {
+        self.download(url, destination)
+    }
 }
 
 impl ReleaseProvider for GithubClient {
@@ -39,6 +49,24 @@ impl ReleaseProvider for GithubClient {
             .map_err(|_| AppError::Internal("无法初始化 GitHub 请求运行时".into()))?;
         runtime.block_on(GithubClient::download(self, url, destination))
     }
+
+    fn download_with_progress(
+        &self,
+        url: &str,
+        destination: &Path,
+        progress: &dyn ProgressReporter,
+    ) -> Result<PathBuf, AppError> {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .map_err(|_| AppError::Internal("无法初始化 GitHub 请求运行时".into()))?;
+        runtime.block_on(GithubClient::download_with_progress(
+            self,
+            url,
+            destination,
+            progress,
+        ))
+    }
 }
 
 pub struct App<P, R = GithubClient> {
@@ -47,6 +75,7 @@ pub struct App<P, R = GithubClient> {
     config: ConfigStore,
     release_provider: R,
     release_platform: Option<ReleasePlatform>,
+    progress: Arc<dyn ProgressReporter>,
 }
 
 impl<P: Platform> App<P, GithubClient> {
@@ -59,6 +88,7 @@ impl<P: Platform> App<P, GithubClient> {
             paths,
             platform,
             release_platform: None,
+            progress: Arc::new(NoProgress),
         }
     }
 }
@@ -76,11 +106,17 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             platform,
             release_provider,
             release_platform: Some(release_platform),
+            progress: Arc::new(NoProgress),
         }
     }
 
+    pub fn with_progress(mut self, progress: Arc<dyn ProgressReporter>) -> Self {
+        self.progress = progress;
+        self
+    }
+
     pub fn run(&self, command: &Command) -> Result<Output, AppError> {
-        match command {
+        let result = match command {
             Command::Install => self.install(),
             Command::Update { service } => self.update(service.as_deref()),
             Command::Rollback { service, version } => self.rollback(service, version),
@@ -97,7 +133,11 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             Command::Restart { service } => self.restart(service.as_deref()),
             Command::Proxy { action } => self.proxy(action),
             Command::Uninstall { purge } => self.uninstall(*purge),
+        };
+        if result.is_err() {
+            self.progress.clear();
         }
+        result
     }
 
     pub fn log_follower(&self, service_name: &str) -> Result<LogFollower, AppError> {
@@ -171,6 +211,8 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
     }
 
     fn prepare_release(&self, service: Service) -> Result<String, AppError> {
+        self.progress
+            .stage(&format!("查询 {} Release", service.key()));
         let metadata = self.release_provider.latest_release(service)?;
         let release_platform = self
             .release_platform
@@ -187,9 +229,19 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         let download_directory = self.paths.downloads.join(service.key()).join(&plan.tag);
         let archive = download_directory.join(asset_name);
         let checksums = download_directory.join(checksum_name);
-        self.release_provider.download(&plan.asset.url, &archive)?;
-        self.release_provider
-            .download(&plan.checksums.url, &checksums)?;
+        self.progress.stage(&format!("下载 {}", service.key()));
+        self.release_provider.download_with_progress(
+            &plan.asset.url,
+            &archive,
+            self.progress.as_ref(),
+        )?;
+        self.release_provider.download_with_progress(
+            &plan.checksums.url,
+            &checksums,
+            self.progress.as_ref(),
+        )?;
+        self.progress
+            .stage(&format!("校验并解压 {}", service.key()));
         transaction.stage_verified_archive(
             service,
             &plan.tag,

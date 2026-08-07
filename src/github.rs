@@ -2,12 +2,14 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
+use futures_util::StreamExt;
 use reqwest::{Client, Proxy, Response, StatusCode, Url};
 use tempfile::NamedTempFile;
 
 use crate::domain::error::AppError;
 use crate::domain::release::ReleaseMetadata;
 use crate::domain::service::{Service, ServiceCatalog};
+use crate::progress::{NoProgress, ProgressReporter};
 use crate::storage::config::{ConfigStore, ProxyConfig};
 
 const GITHUB_API_BASE: &str = "https://api.github.com/";
@@ -44,13 +46,19 @@ impl GithubClient {
     }
 
     pub async fn download(&self, url: &str, destination: &Path) -> Result<PathBuf, AppError> {
+        self.download_with_progress(url, destination, &NoProgress)
+            .await
+    }
+
+    pub async fn download_with_progress(
+        &self,
+        url: &str,
+        destination: &Path,
+        progress: &dyn ProgressReporter,
+    ) -> Result<PathBuf, AppError> {
         let url = Url::parse(url).map_err(|_| AppError::Network("下载地址无效".into()))?;
         let response = self.get(url).await?;
-        let bytes = response
-            .bytes()
-            .await
-            .map_err(|_| AppError::Network("下载 GitHub 资产失败".into()))?;
-        persist_download(destination, &bytes)
+        persist_download(response, destination, progress).await
     }
 
     async fn get(&self, url: Url) -> Result<Response, AppError> {
@@ -113,16 +121,31 @@ fn checked_response(response: Response) -> Result<Response, AppError> {
     }
 }
 
-fn persist_download(destination: &Path, contents: &[u8]) -> Result<PathBuf, AppError> {
+async fn persist_download(
+    response: Response,
+    destination: &Path,
+    progress: &dyn ProgressReporter,
+) -> Result<PathBuf, AppError> {
     let parent = destination
         .parent()
         .ok_or_else(|| AppError::Internal("下载目标路径无效".into()))?;
     fs::create_dir_all(parent).map_err(|_| AppError::Permission("无法创建下载目录".into()))?;
     let mut temporary = NamedTempFile::new_in(parent)
         .map_err(|_| AppError::Permission("无法创建下载临时文件".into()))?;
-    temporary
-        .write_all(contents)
-        .map_err(|_| AppError::Permission("无法写入下载临时文件".into()))?;
+    let name = destination
+        .file_name()
+        .and_then(|name| name.to_str())
+        .unwrap_or("下载文件");
+    progress.begin_download(name, response.content_length());
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|_| AppError::Network("下载 GitHub 资产失败".into()))?;
+        temporary
+            .write_all(&chunk)
+            .map_err(|_| AppError::Permission("无法写入下载临时文件".into()))?;
+        progress.advance(chunk.len() as u64);
+    }
+    progress.finish_download();
     temporary
         .persist(destination)
         .map_err(|_| AppError::Permission("无法完成下载文件写入".into()))?;

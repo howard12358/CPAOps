@@ -4,4 +4,5 @@ pub mod domain;
 pub mod github;
 pub mod output;
 pub mod platform;
+pub mod progress;
 pub mod storage;

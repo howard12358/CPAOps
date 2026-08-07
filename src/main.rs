@@ -5,15 +5,22 @@ use cpactl::domain::error::AppError;
 use cpactl::domain::runtime::RuntimePaths;
 use cpactl::output::Output;
 use cpactl::platform::native_platform;
+use cpactl::progress::{NoProgress, ProgressReporter, TerminalProgress};
 use std::thread;
 use std::time::Duration;
+use std::{io::IsTerminal, sync::Arc};
 
 fn main() {
     let cli = Cli::parse();
     let result = (|| {
         let paths = RuntimePaths::resolve(cli.root.clone())?;
         let platform = native_platform(paths.clone())?;
-        let app = App::new(paths, platform);
+        let progress: Arc<dyn ProgressReporter> = if !cli.json && std::io::stderr().is_terminal() {
+            Arc::new(TerminalProgress::new())
+        } else {
+            Arc::new(NoProgress)
+        };
+        let app = App::new(paths, platform).with_progress(progress);
         let output = app.run(&cli.command)?;
         print_output(&output, cli.json);
         if !output.ok {
