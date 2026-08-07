@@ -62,25 +62,29 @@ impl Output {
                 .get("service")
                 .and_then(Value::as_str)
                 .unwrap_or("未知服务");
-            let status = service
-                .get("status")
-                .and_then(Value::as_str)
-                .unwrap_or("未知状态");
-            let port = service.get("port").and_then(Value::as_u64);
-            let version = service.get("version").and_then(Value::as_str);
-
             output.push('\n');
             output.push_str(name);
             output.push('：');
-            output.push_str(status);
-            if let Some(port) = port {
-                output.push_str("（端口 ");
-                output.push_str(&port.to_string());
-                if let Some(version) = version {
-                    output.push_str("，版本 ");
-                    output.push_str(version);
+            if let Some(status) = service.get("status").and_then(Value::as_str) {
+                output.push_str(status);
+                if let Some(port) = service.get("port").and_then(Value::as_u64) {
+                    output.push_str("（端口 ");
+                    output.push_str(&port.to_string());
+                    if let Some(version) = service.get("version").and_then(Value::as_str) {
+                        output.push_str("，版本 ");
+                        output.push_str(version);
+                    }
+                    output.push('）');
                 }
-                output.push('）');
+            } else if service.get("ok").and_then(Value::as_bool) == Some(true) {
+                output.push_str("成功");
+            } else {
+                output.push_str("失败");
+                if let Some(message) = service.get("message").and_then(Value::as_str) {
+                    output.push('（');
+                    output.push_str(message);
+                    output.push('）');
+                }
             }
         }
         output

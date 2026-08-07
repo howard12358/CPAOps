@@ -152,6 +152,30 @@ fn human_status_output_includes_each_service_state() {
 }
 
 #[test]
+fn human_workflow_output_includes_each_service_result() {
+    let output = cpactl::output::Output::failure_with_data(
+        7,
+        "安装部分失败，已分别保留每项结果",
+        json!({
+            "services": [
+                { "service": "cli-proxy-api", "ok": true },
+                {
+                    "service": "cpa-usage-keeper",
+                    "ok": false,
+                    "code": 5,
+                    "message": "无法访问 GitHub，请检查网络或代理配置"
+                }
+            ]
+        }),
+    );
+
+    assert_eq!(
+        output.human_message(),
+        "安装部分失败，已分别保留每项结果\ncli-proxy-api：成功\ncpa-usage-keeper：失败（无法访问 GitHub，请检查网络或代理配置）"
+    );
+}
+
+#[test]
 fn stop_writes_disabled_marker_before_platform_stop() {
     let fixture = Fixture::new();
     fs::create_dir_all(&fixture.paths.root).unwrap();
