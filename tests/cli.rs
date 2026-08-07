@@ -34,6 +34,17 @@ fn invalid_command_uses_usage_exit_code() {
 }
 
 #[test]
+fn version_output_includes_build_time_and_binary_sha256() {
+    Command::cargo_bin("cpactl")
+        .unwrap()
+        .arg("-V")
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("编译时间："))
+        .stdout(predicate::str::contains("二进制 SHA-256："));
+}
+
+#[test]
 fn path_json_is_emitted_by_the_binary() {
     let root = TempDir::new().unwrap();
     Command::cargo_bin("cpactl")

@@ -11,6 +11,11 @@ use std::time::Duration;
 use std::{io::IsTerminal, sync::Arc};
 
 fn main() {
+    let arguments = std::env::args_os().collect::<Vec<_>>();
+    if arguments.len() == 2 && matches!(arguments[1].to_str(), Some("-V" | "--version")) {
+        println!("{}", cpactl::build_info::version_text());
+        return;
+    }
     let cli = Cli::parse();
     let result = (|| {
         let paths = RuntimePaths::resolve(cli.root.clone())?;
