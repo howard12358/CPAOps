@@ -9,7 +9,7 @@ use cpactl::domain::release::{
     ServiceLifecycle, verify_checksum,
 };
 use cpactl::domain::runtime::RuntimePaths;
-use cpactl::domain::service::Service;
+use cpactl::domain::service::{Service, ServiceCatalog};
 use cpactl::storage::{config::ConfigStore, filesystem::RuntimeStore};
 use cpactl::{
     app::{App, ReleaseProvider},
@@ -64,9 +64,11 @@ fn release_dir(store: &RuntimeStore, service: Service, version: &str) -> PathBuf
 fn create_release(store: &RuntimeStore, service: Service, version: &str) -> PathBuf {
     let directory = release_dir(store, service, version);
     fs::create_dir_all(&directory).unwrap();
-    let binary = match service {
-        Service::Cli => "cli-proxy-api",
-        Service::Keeper => "cpa-usage-keeper",
+    let definition = ServiceCatalog::definition(service);
+    let binary = if cfg!(target_os = "windows") {
+        definition.windows_binary_name
+    } else {
+        definition.macos_binary_name
     };
     fs::write(directory.join(binary), "release binary").unwrap();
     fs::write(directory.join(".verified"), "verified\n").unwrap();
