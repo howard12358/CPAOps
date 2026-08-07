@@ -92,6 +92,24 @@ fn paths(temp_dir: &TempDir) -> RuntimePaths {
     RuntimePaths::from_root(PathBuf::from(temp_dir.path())).unwrap()
 }
 
+fn macos_domain() -> String {
+    let output = std::process::Command::new("id").arg("-u").output().unwrap();
+    let user_id = std::str::from_utf8(&output.stdout)
+        .unwrap()
+        .trim()
+        .parse::<u32>()
+        .unwrap();
+    format!("gui/{user_id}")
+}
+
+fn macos_target(service: Service) -> String {
+    format!(
+        "{}/{}",
+        macos_domain(),
+        cpactl::domain::service::ServiceCatalog::definition(service).launchd_label
+    )
+}
+
 #[test]
 fn macos_start_clears_marker_then_kickstarts_launchagent() {
     let temp_dir = TempDir::new().unwrap();
@@ -109,7 +127,7 @@ fn macos_start_clears_marker_then_kickstarts_launchagent() {
             "launchctl".to_owned(),
             "kickstart".to_owned(),
             "-k".to_owned(),
-            "gui/501/io.cpa-local.cli-proxy-api".to_owned(),
+            macos_target(Service::Cli),
         ]]
     );
     assert!(!paths.disabled_file(Service::Cli).exists());
@@ -130,7 +148,7 @@ fn macos_stop_marks_service_disabled_before_killing_launchagent() {
         vec![vec![
             "launchctl".to_owned(),
             "kill".to_owned(),
-            "gui/501/io.cpa-local.usage-keeper".to_owned(),
+            macos_target(Service::Keeper),
             "SIGTERM".to_owned(),
         ]]
     );
@@ -164,7 +182,7 @@ fn macos_install_skips_bootstrap_for_already_loaded_launchagents() {
             vec![
                 "launchctl".to_owned(),
                 "print".to_owned(),
-                "gui/501/io.cpa-local.cli-proxy-api".to_owned(),
+                macos_target(Service::Cli),
             ],
             vec![
                 "plutil".to_owned(),
@@ -177,7 +195,7 @@ fn macos_install_skips_bootstrap_for_already_loaded_launchagents() {
             vec![
                 "launchctl".to_owned(),
                 "print".to_owned(),
-                "gui/501/io.cpa-local.usage-keeper".to_owned(),
+                macos_target(Service::Keeper),
             ],
         ]
     );
@@ -214,12 +232,12 @@ fn macos_install_boots_out_attempted_services_after_registration_failure() {
             vec![
                 "launchctl".to_owned(),
                 "print".to_owned(),
-                "gui/501/io.cpa-local.cli-proxy-api".to_owned(),
+                macos_target(Service::Cli),
             ],
             vec![
                 "launchctl".to_owned(),
                 "bootstrap".to_owned(),
-                "gui/501".to_owned(),
+                macos_domain(),
                 platform
                     .plist_path(Service::Cli)
                     .to_string_lossy()
@@ -236,12 +254,12 @@ fn macos_install_boots_out_attempted_services_after_registration_failure() {
             vec![
                 "launchctl".to_owned(),
                 "print".to_owned(),
-                "gui/501/io.cpa-local.usage-keeper".to_owned(),
+                macos_target(Service::Keeper),
             ],
             vec![
                 "launchctl".to_owned(),
                 "bootstrap".to_owned(),
-                "gui/501".to_owned(),
+                macos_domain(),
                 platform
                     .plist_path(Service::Keeper)
                     .to_string_lossy()
@@ -250,12 +268,12 @@ fn macos_install_boots_out_attempted_services_after_registration_failure() {
             vec![
                 "launchctl".to_owned(),
                 "bootout".to_owned(),
-                "gui/501/io.cpa-local.usage-keeper".to_owned(),
+                macos_target(Service::Keeper),
             ],
             vec![
                 "launchctl".to_owned(),
                 "bootout".to_owned(),
-                "gui/501/io.cpa-local.cli-proxy-api".to_owned(),
+                macos_target(Service::Cli),
             ],
         ]
     );
@@ -294,12 +312,12 @@ fn macos_install_writes_validated_plists_and_service_wrappers() {
             vec![
                 "launchctl".to_owned(),
                 "print".to_owned(),
-                "gui/501/io.cpa-local.cli-proxy-api".to_owned(),
+                macos_target(Service::Cli),
             ],
             vec![
                 "launchctl".to_owned(),
                 "bootstrap".to_owned(),
-                "gui/501".to_owned(),
+                macos_domain(),
                 platform
                     .plist_path(Service::Cli)
                     .to_string_lossy()
@@ -316,12 +334,12 @@ fn macos_install_writes_validated_plists_and_service_wrappers() {
             vec![
                 "launchctl".to_owned(),
                 "print".to_owned(),
-                "gui/501/io.cpa-local.usage-keeper".to_owned(),
+                macos_target(Service::Keeper),
             ],
             vec![
                 "launchctl".to_owned(),
                 "bootstrap".to_owned(),
-                "gui/501".to_owned(),
+                macos_domain(),
                 platform
                     .plist_path(Service::Keeper)
                     .to_string_lossy()
