@@ -379,6 +379,10 @@ impl<P: Platform> ServiceLifecycle for PlatformLifecycle<'_, P> {
     fn is_healthy(&mut self, service: Service) -> Result<bool, AppError> {
         self.platform.is_port_listening(service)
     }
+
+    fn wait_for_healthy(&mut self, service: Service) -> Result<bool, AppError> {
+        self.platform.wait_for_port(service)
+    }
 }
 
 fn workflow_result(service: Service, result: Result<(), AppError>) -> Value {

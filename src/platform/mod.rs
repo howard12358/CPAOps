@@ -2,6 +2,8 @@ use std::env;
 use std::ffi::OsString;
 use std::path::Path;
 use std::process::Command;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::domain::error::AppError;
 use crate::domain::service::Service;
@@ -98,6 +100,21 @@ pub trait Platform {
     fn status(&self, service: Service) -> Result<ServiceStatus, AppError>;
     fn replace_current_link(&self, service: Service, release: &Path) -> Result<(), AppError>;
     fn is_port_listening(&self, service: Service) -> Result<bool, AppError>;
+    fn wait_for_port(&self, service: Service) -> Result<bool, AppError> {
+        const STARTUP_TIMEOUT: Duration = Duration::from_secs(20);
+        const POLL_INTERVAL: Duration = Duration::from_millis(250);
+
+        let deadline = Instant::now() + STARTUP_TIMEOUT;
+        loop {
+            if self.is_port_listening(service)? {
+                return Ok(true);
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            thread::sleep(POLL_INTERVAL);
+        }
+    }
     fn configure_firewall(&self) -> Result<(), AppError>;
 }
 

@@ -170,6 +170,7 @@ pub trait ServiceLifecycle {
     fn stop(&mut self, service: Service) -> Result<(), AppError>;
     fn restart(&mut self, service: Service) -> Result<(), AppError>;
     fn is_healthy(&mut self, service: Service) -> Result<bool, AppError>;
+    fn wait_for_healthy(&mut self, service: Service) -> Result<bool, AppError>;
 }
 
 #[derive(Clone, Debug)]
@@ -274,7 +275,7 @@ impl ReleaseTransaction {
             lifecycle.start(service)
         }
         .and_then(|()| {
-            if lifecycle.is_healthy(service)? {
+            if lifecycle.wait_for_healthy(service)? {
                 Ok(())
             } else {
                 Err(AppError::Service("新版本健康检查失败".into()))

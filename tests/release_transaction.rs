@@ -110,6 +110,13 @@ impl ServiceLifecycle for FakeLifecycle {
         Ok(self.healthy)
     }
 
+    fn wait_for_healthy(
+        &mut self,
+        service: Service,
+    ) -> Result<bool, cpactl::domain::error::AppError> {
+        self.is_healthy(service)
+    }
+
     fn replace_current(
         &mut self,
         service: Service,
@@ -460,6 +467,9 @@ impl Platform for UpdatePlatform {
     }
     fn is_port_listening(&self, service: Service) -> Result<bool, AppError> {
         Ok(service == Service::Cli || !self.paths.current.join(Service::Keeper.key()).exists())
+    }
+    fn wait_for_port(&self, service: Service) -> Result<bool, AppError> {
+        self.is_port_listening(service)
     }
     fn configure_firewall(&self) -> Result<(), AppError> {
         Ok(())
