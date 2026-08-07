@@ -273,8 +273,8 @@ impl<R: CommandRunner> Platform for MacosPlatform<R> {
             "launchctl",
             vec![
                 OsString::from("kill"),
-                OsString::from(self.service_target(service)),
                 OsString::from("SIGTERM"),
+                OsString::from(self.service_target(service)),
             ],
         )
     }

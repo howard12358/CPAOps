@@ -148,8 +148,8 @@ fn macos_stop_marks_service_disabled_before_killing_launchagent() {
         vec![vec![
             "launchctl".to_owned(),
             "kill".to_owned(),
-            macos_target(Service::Keeper),
             "SIGTERM".to_owned(),
+            macos_target(Service::Keeper),
         ]]
     );
 }
