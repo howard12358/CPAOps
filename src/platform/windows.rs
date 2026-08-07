@@ -63,16 +63,18 @@ impl<R: CommandRunner> WindowsPlatform<R> {
         script: &str,
         parameters: Vec<OsString>,
     ) -> Result<CommandOutput, AppError> {
-        let args = vec![
+        let mut args = vec![
             OsString::from("-NoProfile"),
             OsString::from("-NonInteractive"),
             OsString::from("-ExecutionPolicy"),
             OsString::from("Bypass"),
             OsString::from("-EncodedCommand"),
             OsString::from(encode_powershell(script)),
-            OsString::from("-EncodedArguments"),
-            OsString::from(encode_powershell_arguments(&parameters)?),
         ];
+        if !parameters.is_empty() {
+            args.push(OsString::from("-EncodedArguments"));
+            args.push(OsString::from(encode_powershell_arguments(&parameters)?));
+        }
         self.runner.run("powershell.exe", &args)
     }
 

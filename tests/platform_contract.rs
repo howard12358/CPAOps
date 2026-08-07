@@ -469,7 +469,11 @@ fn windows_encodes_static_powershell_and_passes_runtime_values_separately() {
             .is_some_and(|program| program == "powershell.exe")
     }) {
         assert!(call.iter().any(|argument| argument == "-EncodedCommand"));
-        assert!(call.iter().any(|argument| argument == "-EncodedArguments"));
+        if powershell_arguments(&call).is_some() {
+            assert!(call.iter().any(|argument| argument == "-EncodedArguments"));
+        } else {
+            assert!(!call.iter().any(|argument| argument == "-EncodedArguments"));
+        }
         assert!(!call.iter().any(|argument| argument == "-Command"));
         assert!(
             !call
