@@ -24,18 +24,6 @@ fn main() {
     let cli = Cli::parse();
     let result = (|| {
         let paths = RuntimePaths::resolve(cli.root.clone())?;
-        if let Command::Auth { action } = &cli.command {
-            let output = cpactl::auth::run(paths, action)?;
-            print_output(&output, cli.json);
-            return Ok(());
-        }
-        if let Command::Upgrade { check } = &cli.command {
-            let output = cpactl::upgrade::run(paths, *check)?;
-            print_output(&output, cli.json);
-            return Ok(());
-        }
-        let platform = native_platform(paths.clone())?;
-        let runtime_root = paths.root.clone();
         let interactive =
             !cli.json && std::io::stdin().is_terminal() && std::io::stderr().is_terminal();
         let progress: Arc<dyn ProgressReporter> = if interactive {
@@ -43,6 +31,18 @@ fn main() {
         } else {
             Arc::new(NoProgress)
         };
+        if let Command::Auth { action } = &cli.command {
+            let output = cpactl::auth::run(paths, action)?;
+            print_output(&output, cli.json);
+            return Ok(());
+        }
+        if let Command::Upgrade { check } = &cli.command {
+            let output = cpactl::upgrade::run(paths, *check, progress.as_ref())?;
+            print_output(&output, cli.json);
+            return Ok(());
+        }
+        let platform = native_platform(paths.clone())?;
+        let runtime_root = paths.root.clone();
         let app = App::new(paths, platform)
             .with_progress(progress)
             .with_interactive_proxy_prompt(interactive);

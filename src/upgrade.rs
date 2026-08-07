@@ -6,11 +6,27 @@ use crate::domain::release::verify_checksum;
 use crate::domain::runtime::RuntimePaths;
 use crate::github::GithubClient;
 use crate::output::Output;
+use crate::progress::ProgressReporter;
 use crate::storage::config::ConfigStore;
 
 const REPOSITORY: &str = "howard12358/CPAOps";
 
-pub fn run(paths: RuntimePaths, check_only: bool) -> Result<Output, AppError> {
+pub fn run(
+    paths: RuntimePaths,
+    check_only: bool,
+    progress: &dyn ProgressReporter,
+) -> Result<Output, AppError> {
+    let result = run_inner(paths, check_only, progress);
+    progress.clear();
+    result
+}
+
+fn run_inner(
+    paths: RuntimePaths,
+    check_only: bool,
+    progress: &dyn ProgressReporter,
+) -> Result<Output, AppError> {
+    progress.stage("查询 cpactl Release");
     let client = GithubClient::new(ConfigStore::new(paths))?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
@@ -43,8 +59,10 @@ pub fn run(paths: RuntimePaths, check_only: bool) -> Result<Output, AppError> {
         tempfile::tempdir().map_err(|_| AppError::Permission("无法创建升级临时目录".into()))?;
     let archive = temporary.path().join(&asset.name);
     let checksum = temporary.path().join("checksums.txt");
-    runtime.block_on(client.download(&asset.url, &archive))?;
-    runtime.block_on(client.download(&checksums.url, &checksum))?;
+    progress.stage("下载 cpactl 更新包");
+    runtime.block_on(client.download_with_progress(&asset.url, &archive, progress))?;
+    runtime.block_on(client.download_with_progress(&checksums.url, &checksum, progress))?;
+    progress.stage("校验并替换 cpactl");
     verify_checksum(&archive, &checksum, &asset.name)?;
     let replacement = extract_binary(&archive, temporary.path())?;
     replace_current_binary(&replacement)?;
