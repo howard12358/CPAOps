@@ -12,8 +12,6 @@ use crate::platform::{
 use base64::Engine;
 
 const FIREWALL_RULE: &str = "CPAStack-Block-Remote-Keeper";
-const SYSTEM_SID: &str = "*S-1-5-18:(OI)(CI)F";
-const ADMINISTRATORS_SID: &str = "*S-1-5-32-544:(OI)(CI)F";
 
 #[derive(Clone, Debug)]
 pub struct WindowsPlatform<R = ProcessCommandRunner> {
@@ -47,15 +45,6 @@ impl<R: CommandRunner> WindowsPlatform<R> {
             Service::Cli => "run-cli-proxy-api.ps1",
             Service::Keeper => "run-cpa-usage-keeper.ps1",
         })
-    }
-
-    fn run_required(&self, program: &str, args: Vec<OsString>) -> Result<(), AppError> {
-        let output = self.runner.run(program, &args)?;
-        if output.success {
-            Ok(())
-        } else {
-            Err(command_failure("系统服务管理命令执行失败", output))
-        }
     }
 
     fn run_powershell(
@@ -92,17 +81,24 @@ impl<R: CommandRunner> WindowsPlatform<R> {
     }
 
     fn set_root_acl(&self) -> Result<(), AppError> {
-        self.run_required(
-            "icacls",
-            vec![
-                self.paths.root.clone().into_os_string(),
-                OsString::from("/inheritance:r"),
-                OsString::from("/grant"),
-                OsString::from(SYSTEM_SID),
-                OsString::from(ADMINISTRATORS_SID),
-                OsString::from("/T"),
-            ],
-        )
+        let script = concat!(
+            "param([string]$Root)\n",
+            "$ErrorActionPreference = 'Stop'\n",
+            "$system = [Security.Principal.SecurityIdentifier]::new('S-1-5-18')\n",
+            "$administrators = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')\n",
+            "$items = @((Get-Item -LiteralPath $Root -Force)) + @(Get-ChildItem -LiteralPath $Root -Force -Recurse)\n",
+            "foreach ($item in $items) {\n",
+            "  $acl = Get-Acl -LiteralPath $item.FullName\n",
+            "  $acl.SetAccessRuleProtection($true, $false)\n",
+            "  $inheritance = if ($item.PSIsContainer) { [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit } else { [Security.AccessControl.InheritanceFlags]::None }\n",
+            "  foreach ($identity in @($system, $administrators)) {\n",
+            "    $rule = [Security.AccessControl.FileSystemAccessRule]::new($identity, [Security.AccessControl.FileSystemRights]::FullControl, $inheritance, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow)\n",
+            "    $acl.SetAccessRule($rule)\n",
+            "  }\n",
+            "  Set-Acl -LiteralPath $item.FullName -AclObject $acl\n",
+            "}\n"
+        );
+        self.run_powershell_required(script, vec![self.paths.root.clone().into_os_string()])
     }
 
     fn write_wrapper(&self, service: Service) -> Result<(), AppError> {

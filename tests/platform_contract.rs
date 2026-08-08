@@ -369,7 +369,7 @@ fn macos_port_health_uses_lsof_with_the_service_port_as_an_argument() {
 }
 
 #[test]
-fn windows_install_registers_system_startup_tasks_and_blocks_keeper_port() {
+fn windows_install_secures_runtime_tree_and_registers_system_startup_tasks() {
     let temp_dir = TempDir::new().unwrap();
     let paths = paths(&temp_dir);
     let runner = RecordingRunner::default();
@@ -377,19 +377,17 @@ fn windows_install_registers_system_startup_tasks_and_blocks_keeper_port() {
 
     platform.install_services().unwrap();
 
-    let calls = runner.calls();
-    assert!(calls.iter().any(|call| {
-        call == &vec![
-            "icacls".to_owned(),
-            paths.root.to_string_lossy().into_owned(),
-            "/inheritance:r".to_owned(),
-            "/grant".to_owned(),
-            "*S-1-5-18:(OI)(CI)F".to_owned(),
-            "*S-1-5-32-544:(OI)(CI)F".to_owned(),
-            "/T".to_owned(),
-        ]
-    }));
     let scripts = runner.scripts();
+    assert!(
+        scripts
+            .iter()
+            .any(|script| script.contains("SetAccessRuleProtection($true, $false)"))
+    );
+    assert!(
+        scripts
+            .iter()
+            .any(|script| script.contains("FileSystemAccessRule"))
+    );
     assert!(
         scripts
             .iter()
