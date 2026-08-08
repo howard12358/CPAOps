@@ -137,8 +137,20 @@ impl<R: CommandRunner> WindowsPlatform<R> {
             log = definition.log_prefix,
             argument = argument,
         );
-        fs::write(self.wrapper_path(service), wrapper)
-            .map_err(|_| AppError::State("无法写入 Windows 服务包装器".into()))
+        let path = self.wrapper_path(service);
+        if fs::read_to_string(&path)
+            .ok()
+            .as_deref()
+            .is_some_and(|existing| existing == wrapper)
+        {
+            return Ok(());
+        }
+        fs::write(&path, wrapper).map_err(|error| {
+            AppError::State(format!(
+                "无法写入 Windows 服务包装器 {}：{error}",
+                path.display()
+            ))
+        })
     }
 
     fn clear_disabled(&self, service: Service) -> Result<(), AppError> {

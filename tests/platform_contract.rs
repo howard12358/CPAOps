@@ -408,6 +408,29 @@ fn windows_install_registers_system_startup_tasks_and_blocks_keeper_port() {
 }
 
 #[test]
+#[cfg(windows)]
+fn windows_install_reuses_an_unchanged_read_only_service_wrapper() {
+    let temp_dir = TempDir::new().unwrap();
+    let paths = paths(&temp_dir);
+    let runner = RecordingRunner::default();
+    let platform = WindowsPlatform::with_runner(runner, paths.clone());
+
+    platform.install_services().unwrap();
+
+    let wrapper = paths.tasks.join("run-cli-proxy-api.ps1");
+    let mut permissions = std::fs::metadata(&wrapper).unwrap().permissions();
+    permissions.set_readonly(true);
+    std::fs::set_permissions(&wrapper, permissions).unwrap();
+
+    let result = platform.install_services();
+
+    let mut permissions = std::fs::metadata(&wrapper).unwrap().permissions();
+    permissions.set_readonly(false);
+    std::fs::set_permissions(&wrapper, permissions).unwrap();
+    result.unwrap();
+}
+
+#[test]
 fn windows_lifecycle_uses_tasks_and_disabled_marker() {
     let temp_dir = TempDir::new().unwrap();
     let paths = paths(&temp_dir);
