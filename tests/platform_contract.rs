@@ -430,15 +430,14 @@ fn windows_install_reuses_an_unchanged_read_only_service_wrapper() {
     platform.install_services().unwrap();
 
     let wrapper = paths.tasks.join("run-cli-proxy-api.ps1");
-    let mut permissions = std::fs::metadata(&wrapper).unwrap().permissions();
-    permissions.set_readonly(true);
-    std::fs::set_permissions(&wrapper, permissions).unwrap();
+    let original_permissions = std::fs::metadata(&wrapper).unwrap().permissions();
+    let mut read_only_permissions = original_permissions.clone();
+    read_only_permissions.set_readonly(true);
+    std::fs::set_permissions(&wrapper, read_only_permissions).unwrap();
 
     let result = platform.install_services();
 
-    let mut permissions = std::fs::metadata(&wrapper).unwrap().permissions();
-    permissions.set_readonly(false);
-    std::fs::set_permissions(&wrapper, permissions).unwrap();
+    std::fs::set_permissions(&wrapper, original_permissions).unwrap();
     result.unwrap();
 }
 
