@@ -466,6 +466,28 @@ fn windows_lifecycle_uses_tasks_and_disabled_marker() {
 }
 
 #[test]
+fn windows_activation_removes_junctions_without_recursing_into_release_contents() {
+    let temp_dir = TempDir::new().unwrap();
+    let paths = paths(&temp_dir);
+    let release = paths.releases.join("cli-proxy-api").join("v1");
+    std::fs::create_dir_all(&release).unwrap();
+    let runner = RecordingRunner::default();
+    let platform = WindowsPlatform::with_runner(runner.clone(), paths);
+
+    platform
+        .replace_current_link(Service::Cli, &release)
+        .unwrap();
+
+    let scripts = runner.scripts();
+    let activation = scripts
+        .iter()
+        .find(|script| script.contains("New-Item -ItemType Junction"))
+        .unwrap();
+    assert!(activation.contains("[System.IO.Directory]::Delete"));
+    assert!(!activation.contains("Remove-Item -LiteralPath $Temporary -Force -Recurse"));
+}
+
+#[test]
 fn windows_port_health_queries_service_port_as_a_parameter() {
     let temp_dir = TempDir::new().unwrap();
     let runner = RecordingRunner::default();
@@ -490,6 +512,28 @@ fn windows_port_health_queries_service_port_as_a_parameter() {
             && powershell_script(health)
                 .is_some_and(|script| script.contains("Get-NetTCPConnection"))
     }));
+}
+
+#[test]
+fn windows_status_queries_task_and_port_in_one_powershell_process() {
+    let temp_dir = TempDir::new().unwrap();
+    let runner = RecordingRunner::default();
+    let platform = WindowsPlatform::with_runner(runner.clone(), paths(&temp_dir));
+
+    platform.status(Service::Keeper).unwrap();
+
+    let calls = runner.calls();
+    let powershell_calls = calls
+        .iter()
+        .filter(|call| {
+            call.first()
+                .is_some_and(|program| program == "powershell.exe")
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(powershell_calls.len(), 1);
+    let script = powershell_script(powershell_calls[0]).unwrap();
+    assert!(script.contains("Get-ScheduledTask"));
+    assert!(script.contains("Get-NetTCPConnection"));
 }
 
 #[test]

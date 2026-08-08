@@ -271,16 +271,24 @@ impl<R: CommandRunner> Platform for WindowsPlatform<R> {
     }
 
     fn status(&self, service: Service) -> Result<ServiceStatus, AppError> {
-        let managed = self
-            .run_powershell(
-                "param([string]$TaskName) Get-ScheduledTask -TaskName $TaskName -ErrorAction Stop | Out-Null",
-                vec![OsString::from(Self::task_name(service))],
-            )?
-            .success;
+        let port = ServiceCatalog::definition(service).port;
+        let output = self.run_powershell(
+            concat!(
+                "param([string]$TaskName, [int]$Port)\n",
+                "$managed = @(Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue).Count -gt 0\n",
+                "$listening = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue).Count -gt 0\n",
+                "Write-Output \"$([int]$managed),$([int]$listening)\"\n"
+            ),
+            vec![
+                OsString::from(Self::task_name(service)),
+                OsString::from(port.to_string()),
+            ],
+        )?;
+        let (managed, listening) = parse_status(&output);
         Ok(ServiceStatus {
             managed,
             disabled: self.paths.disabled_file(service).exists(),
-            listening: self.is_port_listening(service)?,
+            listening,
         })
     }
 
@@ -299,8 +307,9 @@ impl<R: CommandRunner> Platform for WindowsPlatform<R> {
         let script = concat!(
             "param([string]$Current, [string]$Temporary, [string]$Previous, [string]$Release)\n",
             "$ErrorActionPreference = 'Stop'\n",
-            "Remove-Item -LiteralPath $Temporary -Force -Recurse -ErrorAction SilentlyContinue\n",
-            "Remove-Item -LiteralPath $Previous -Force -Recurse -ErrorAction SilentlyContinue\n",
+            "function Remove-Junction([string]$Path) { if (Test-Path -LiteralPath $Path) { [System.IO.Directory]::Delete($Path) } }\n",
+            "Remove-Junction $Temporary\n",
+            "Remove-Junction $Previous\n",
             "New-Item -ItemType Junction -Path $Temporary -Target $Release | Out-Null\n",
             "if (Test-Path -LiteralPath $Current) { Move-Item -LiteralPath $Current -Destination $Previous -Force }\n",
             "Move-Item -LiteralPath $Temporary -Destination $Current -Force\n"
@@ -349,6 +358,16 @@ impl<R: CommandRunner> WindowsPlatform<R> {
 fn encode_powershell(value: &str) -> String {
     let utf16: Vec<u8> = value.encode_utf16().flat_map(u16::to_le_bytes).collect();
     base64::engine::general_purpose::STANDARD.encode(utf16)
+}
+
+fn parse_status(output: &CommandOutput) -> (bool, bool) {
+    if !output.success {
+        return (false, false);
+    }
+    match output.stdout.split_once(',') {
+        Some((managed, listening)) => (managed.trim() == "1", listening.trim() == "1"),
+        None => (true, true),
+    }
 }
 
 fn encode_powershell_invocation(script: &str, parameters: &[OsString]) -> Result<String, AppError> {
