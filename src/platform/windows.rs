@@ -52,18 +52,14 @@ impl<R: CommandRunner> WindowsPlatform<R> {
         script: &str,
         parameters: Vec<OsString>,
     ) -> Result<CommandOutput, AppError> {
-        let mut args = vec![
+        let args = vec![
             OsString::from("-NoProfile"),
             OsString::from("-NonInteractive"),
             OsString::from("-ExecutionPolicy"),
             OsString::from("Bypass"),
             OsString::from("-EncodedCommand"),
-            OsString::from(encode_powershell(script)),
+            OsString::from(encode_powershell_invocation(script, &parameters)?),
         ];
-        if !parameters.is_empty() {
-            args.push(OsString::from("-EncodedArguments"));
-            args.push(OsString::from(encode_powershell_arguments(&parameters)?));
-        }
         self.runner.run("powershell.exe", &args)
     }
 
@@ -355,18 +351,32 @@ fn encode_powershell(value: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(utf16)
 }
 
-fn encode_powershell_arguments(parameters: &[OsString]) -> Result<String, AppError> {
-    let arguments = parameters
+fn encode_powershell_invocation(script: &str, parameters: &[OsString]) -> Result<String, AppError> {
+    if parameters.is_empty() {
+        return Ok(encode_powershell(script));
+    }
+
+    let parameters = parameters
         .iter()
         .map(|parameter| {
             parameter
                 .to_str()
-                .map(|value| format!("'{}'", value.replace('\'', "''")))
+                .map(str::to_owned)
                 .ok_or_else(|| AppError::Usage("Windows 运行目录必须是有效的 Unicode 路径".into()))
         })
-        .collect::<Result<Vec<_>, _>>()?
-        .join(" ");
-    Ok(encode_powershell(&arguments))
+        .collect::<Result<Vec<_>, _>>()?;
+    let serialized = serde_json::to_string(&parameters)
+        .map_err(|error| AppError::State(format!("无法编码 Windows 服务参数：{error}")))?;
+    let payload = encode_powershell(&serialized);
+    let invocation = format!(
+        concat!(
+            "$cpactlParameters = @([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('{payload}')) | ConvertFrom-Json)\n",
+            "& {{\n{script}\n}} @cpactlParameters"
+        ),
+        payload = payload,
+        script = script
+    );
+    Ok(encode_powershell(&invocation))
 }
 
 fn remove_if_exists(path: &Path) -> Result<(), AppError> {

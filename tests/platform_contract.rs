@@ -50,6 +50,20 @@ fn powershell_arguments(call: &[String]) -> Option<String> {
     powershell_value(call, "-EncodedArguments")
 }
 
+fn powershell_parameters(call: &[String]) -> Option<Vec<String>> {
+    let script = powershell_script(call)?;
+    let prefix = "FromBase64String('";
+    let encoded = script.split(prefix).nth(1)?.split("')").next()?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .ok()?;
+    let utf16 = bytes
+        .chunks_exact(2)
+        .map(|bytes| u16::from_le_bytes([bytes[0], bytes[1]]))
+        .collect::<Vec<_>>();
+    serde_json::from_str(&String::from_utf16(&utf16).ok()?).ok()
+}
+
 fn powershell_value(call: &[String], flag: &str) -> Option<String> {
     let encoded = call.windows(2).find(|args| args[0] == flag)?.get(1)?;
     let bytes = base64::engine::general_purpose::STANDARD
@@ -468,7 +482,10 @@ fn windows_port_health_queries_service_port_as_a_parameter() {
                 .is_some_and(|program| program == "powershell.exe")
         })
         .unwrap();
-    assert!(powershell_arguments(health).is_some_and(|arguments| arguments == "'18080'"));
+    assert_eq!(
+        powershell_parameters(health),
+        Some(vec!["18080".to_owned()])
+    );
     assert!(health.windows(2).any(|args| {
         args[0] == "-EncodedCommand"
             && powershell_script(health)
@@ -490,11 +507,7 @@ fn windows_encodes_static_powershell_and_passes_runtime_values_separately() {
             .is_some_and(|program| program == "powershell.exe")
     }) {
         assert!(call.iter().any(|argument| argument == "-EncodedCommand"));
-        if powershell_arguments(&call).is_some() {
-            assert!(call.iter().any(|argument| argument == "-EncodedArguments"));
-        } else {
-            assert!(!call.iter().any(|argument| argument == "-EncodedArguments"));
-        }
+        assert!(powershell_arguments(&call).is_none());
         assert!(!call.iter().any(|argument| argument == "-Command"));
         assert!(
             !call
@@ -502,4 +515,11 @@ fn windows_encodes_static_powershell_and_passes_runtime_values_separately() {
                 .any(|argument| argument == &paths.root.to_string_lossy())
         );
     }
+
+    assert!(
+        runner
+            .scripts()
+            .iter()
+            .any(|script| script.contains("FromBase64String"))
+    );
 }
