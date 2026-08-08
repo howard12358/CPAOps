@@ -370,7 +370,7 @@ fn encode_powershell_invocation(script: &str, parameters: &[OsString]) -> Result
     let payload = encode_powershell(&serialized);
     let invocation = format!(
         concat!(
-            "$cpactlParameters = @([Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('{payload}')) | ConvertFrom-Json)\n",
+            "$cpactlParameters = [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('{payload}')) | ConvertFrom-Json\n",
             "& {{\n{script}\n}} @cpactlParameters"
         ),
         payload = payload,
@@ -384,5 +384,30 @@ fn remove_if_exists(path: &Path) -> Result<(), AppError> {
         Ok(()) => Ok(()),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
         Err(_) => Err(AppError::State("无法移除 Windows 服务包装器".into())),
+    }
+}
+
+#[cfg(all(test, windows))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn encoded_invocation_binds_each_runtime_parameter() {
+        let temporary = tempfile::tempdir().unwrap();
+        let paths = RuntimePaths::from_root(temporary.path().to_path_buf()).unwrap();
+        let platform = WindowsPlatform::with_runner(ProcessCommandRunner, paths);
+
+        let output = platform
+            .run_powershell(
+                concat!(
+                    "param([string]$First, [string]$Second)\n",
+                    "if ($First -eq 'first' -and $Second -eq 'second') { exit 0 }\n",
+                    "exit 1\n"
+                ),
+                vec![OsString::from("first"), OsString::from("second")],
+            )
+            .unwrap();
+
+        assert!(output.success, "{}", output.stderr);
     }
 }
