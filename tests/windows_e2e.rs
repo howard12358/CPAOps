@@ -185,7 +185,10 @@ fn sha256(path: &Path) -> String {
 }
 
 fn assert_current_version(paths: &RuntimePaths, service: Service, expected: &str) {
-    let target = fs::read_link(paths.current.join(service.key())).unwrap();
+    let target = cpactl::storage::filesystem::RuntimeStore::new(paths.clone())
+        .current_target(service)
+        .unwrap()
+        .unwrap();
     assert_eq!(target.file_name().unwrap(), expected);
 }
 

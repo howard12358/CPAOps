@@ -77,7 +77,12 @@ fn create_release(store: &RuntimeStore, service: Service, version: &str) -> Path
 }
 
 fn current_target(store: &RuntimeStore, service: Service) -> PathBuf {
-    fs::canonicalize(store.paths().current.join(service.key())).unwrap()
+    store
+        .current_target(service)
+        .unwrap()
+        .unwrap()
+        .canonicalize()
+        .unwrap()
 }
 
 struct FakeLifecycle {

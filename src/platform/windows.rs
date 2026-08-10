@@ -9,6 +9,7 @@ use crate::domain::service::{Service, ServiceCatalog};
 use crate::platform::{
     CommandOutput, CommandRunner, Platform, ProcessCommandRunner, ServiceStatus,
 };
+use crate::storage::filesystem::RuntimeStore;
 use base64::Engine;
 
 const FIREWALL_RULE: &str = "CPAStack-Block-Remote-Keeper";
@@ -117,7 +118,10 @@ impl<R: CommandRunner> WindowsPlatform<R> {
                 "$ErrorActionPreference = 'Stop'\n",
                 "$disabled = Join-Path $Root 'state\\{service}.disabled'\n",
                 "if (Test-Path -LiteralPath $disabled) {{ exit 0 }}\n",
-                "$binary = Join-Path $Root 'current\\{service}\\{binary}'\n",
+                "$pointer = Join-Path $Root 'current\\{service}.path'\n",
+                "$release = (Get-Content -LiteralPath $pointer -Raw).Trim()\n",
+                "if ([string]::IsNullOrWhiteSpace($release)) {{ throw '当前版本指针为空' }}\n",
+                "$binary = Join-Path $release '{binary}'\n",
                 "$config = Join-Path $Root '{config}'\n",
                 "$outLog = Join-Path $Root 'logs\\{log}.out.log'\n",
                 "$errLog = Join-Path $Root 'logs\\{log}.err.log'\n",
@@ -293,36 +297,7 @@ impl<R: CommandRunner> Platform for WindowsPlatform<R> {
     }
 
     fn replace_current_link(&self, service: Service, release: &Path) -> Result<(), AppError> {
-        if !release.is_dir() {
-            return Err(AppError::State("待激活版本目录不存在".into()));
-        }
-        fs::create_dir_all(&self.paths.current)
-            .map_err(|_| AppError::State("无法创建当前版本目录".into()))?;
-        let current = self.paths.current.join(service.key());
-        let temporary = self.paths.current.join(format!("{}.next", service.key()));
-        let previous = self
-            .paths
-            .current
-            .join(format!("{}.previous", service.key()));
-        let script = concat!(
-            "param([string]$Current, [string]$Temporary, [string]$Previous, [string]$Release)\n",
-            "$ErrorActionPreference = 'Stop'\n",
-            "function Remove-Junction([string]$Path) { if (Test-Path -LiteralPath $Path) { [System.IO.Directory]::Delete($Path) } }\n",
-            "Remove-Junction $Temporary\n",
-            "Remove-Junction $Previous\n",
-            "New-Item -ItemType Junction -Path $Temporary -Target $Release | Out-Null\n",
-            "if (Test-Path -LiteralPath $Current) { Move-Item -LiteralPath $Current -Destination $Previous -Force }\n",
-            "Move-Item -LiteralPath $Temporary -Destination $Current -Force\n"
-        );
-        self.run_powershell_required(
-            script,
-            vec![
-                current.into_os_string(),
-                temporary.into_os_string(),
-                previous.into_os_string(),
-                release.to_path_buf().into_os_string(),
-            ],
-        )
+        RuntimeStore::new(self.paths.clone()).set_current(service, release)
     }
 
     fn is_port_listening(&self, service: Service) -> Result<bool, AppError> {

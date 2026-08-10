@@ -457,16 +457,13 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
     }
 
     fn current_version(&self, service: Service) -> Result<Option<String>, AppError> {
-        let current = self.paths.current.join(service.key());
-        let target = match fs::read_link(&current) {
-            Ok(target) => target,
-            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
-            Err(_) => return Ok(None),
-        };
-        Ok(target
-            .file_name()
-            .and_then(|name| name.to_str())
-            .map(ToOwned::to_owned))
+        let target = RuntimeStore::new(self.paths.clone()).current_target(service)?;
+        Ok(target.and_then(|target| {
+            target
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(ToOwned::to_owned)
+        }))
     }
 
     fn logs(&self, service: Service, lines: usize) -> Result<Output, AppError> {

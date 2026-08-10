@@ -56,7 +56,7 @@ fn cache_clean_removes_only_downloads_and_dry_run_keeps_files() {
 
 #[test]
 #[cfg(windows)]
-fn clear_current_removes_a_windows_directory_link_without_following_its_target() {
+fn current_pointer_switches_without_a_windows_directory_link() {
     let temporary = tempfile::tempdir().unwrap();
     let paths = RuntimePaths::from_root(temporary.path().join("runtime")).unwrap();
     let store = RuntimeStore::new(paths.clone());
@@ -65,8 +65,15 @@ fn clear_current_removes_a_windows_directory_link_without_following_its_target()
     fs::create_dir_all(&release).unwrap();
 
     store.set_current(Service::Cli, &release).unwrap();
-    store.clear_current(Service::Cli).unwrap();
 
+    assert_eq!(
+        fs::read_to_string(paths.current.join("cli-proxy-api.path"))
+            .unwrap()
+            .trim(),
+        release.display().to_string()
+    );
     assert!(!paths.current.join(Service::Cli.key()).exists());
+    store.clear_current(Service::Cli).unwrap();
+    assert!(!paths.current.join("cli-proxy-api.path").exists());
     assert!(release.is_dir());
 }

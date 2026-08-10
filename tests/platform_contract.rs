@@ -476,25 +476,26 @@ fn windows_lifecycle_uses_tasks_and_disabled_marker() {
 }
 
 #[test]
-fn windows_activation_removes_junctions_without_recursing_into_release_contents() {
+#[cfg(windows)]
+fn windows_activation_writes_a_current_version_pointer_without_powershell_junction_commands() {
     let temp_dir = TempDir::new().unwrap();
     let paths = paths(&temp_dir);
     let release = paths.releases.join("cli-proxy-api").join("v1");
     std::fs::create_dir_all(&release).unwrap();
     let runner = RecordingRunner::default();
-    let platform = WindowsPlatform::with_runner(runner.clone(), paths);
+    let platform = WindowsPlatform::with_runner(runner.clone(), paths.clone());
 
     platform
         .replace_current_link(Service::Cli, &release)
         .unwrap();
 
-    let scripts = runner.scripts();
-    let activation = scripts
-        .iter()
-        .find(|script| script.contains("New-Item -ItemType Junction"))
-        .unwrap();
-    assert!(activation.contains("[System.IO.Directory]::Delete"));
-    assert!(!activation.contains("Remove-Item -LiteralPath $Temporary -Force -Recurse"));
+    assert_eq!(
+        std::fs::read_to_string(paths.current.join("cli-proxy-api.path"))
+            .unwrap()
+            .trim(),
+        release.display().to_string()
+    );
+    assert!(runner.scripts().is_empty());
 }
 
 #[test]

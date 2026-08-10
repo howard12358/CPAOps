@@ -58,15 +58,29 @@ impl RuntimeStore {
 
         fs::create_dir_all(&self.paths.current)
             .map_err(|error| AppError::Permission(format!("无法创建 current 目录：{error}")))?;
-        let current = self.paths.current.join(service.key());
-        let next = self.paths.current.join(format!("{}.next", service.key()));
-        remove_path_if_exists(&next)?;
-        create_directory_link(target, &next)?;
-        replace_current_link(&next, &current)
+        #[cfg(windows)]
+        {
+            self.set_windows_current_pointer(service, target)
+        }
+        #[cfg(not(windows))]
+        {
+            let current = self.paths.current.join(service.key());
+            let next = self.paths.current.join(format!("{}.next", service.key()));
+            remove_path_if_exists(&next)?;
+            create_directory_link(target, &next)?;
+            replace_current_link(&next, &current)
+        }
     }
 
     pub fn clear_current(&self, service: Service) -> Result<(), AppError> {
-        remove_path_if_exists(&self.paths.current.join(service.key()))
+        #[cfg(windows)]
+        {
+            remove_path_if_exists(&self.windows_current_pointer(service))
+        }
+        #[cfg(not(windows))]
+        {
+            remove_path_if_exists(&self.paths.current.join(service.key()))
+        }
     }
 
     pub fn clean_download_cache<F>(
@@ -108,16 +122,52 @@ impl RuntimeStore {
     }
 
     pub fn current_target(&self, service: Service) -> Result<Option<PathBuf>, AppError> {
-        let link = self.paths.current.join(service.key());
-        match fs::read_link(&link) {
-            Ok(target) => Ok(Some(if target.is_absolute() {
-                target
-            } else {
-                self.paths.current.join(target)
-            })),
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(error) => Err(AppError::State(format!("无法读取当前版本：{error}"))),
+        #[cfg(windows)]
+        {
+            let pointer = self.windows_current_pointer(service);
+            match fs::read_to_string(&pointer) {
+                Ok(target) => Ok(Some(PathBuf::from(target.trim()))),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(error) => Err(AppError::State(format!("无法读取当前版本：{error}"))),
+            }
         }
+        #[cfg(not(windows))]
+        {
+            let link = self.paths.current.join(service.key());
+            match fs::read_link(&link) {
+                Ok(target) => Ok(Some(if target.is_absolute() {
+                    target
+                } else {
+                    self.paths.current.join(target)
+                })),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+                Err(error) => Err(AppError::State(format!("无法读取当前版本：{error}"))),
+            }
+        }
+    }
+
+    #[cfg(windows)]
+    fn windows_current_pointer(&self, service: Service) -> PathBuf {
+        self.paths.current.join(format!("{}.path", service.key()))
+    }
+
+    #[cfg(windows)]
+    fn set_windows_current_pointer(&self, service: Service, target: &Path) -> Result<(), AppError> {
+        let pointer = self.windows_current_pointer(service);
+        let temporary = pointer.with_extension("path.next");
+        fs::write(&temporary, format!("{}\n", target.display()))
+            .map_err(|error| AppError::Permission(format!("无法写入当前版本指针：{error}")))?;
+        match fs::remove_file(&pointer) {
+            Ok(()) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                return Err(AppError::Permission(format!(
+                    "无法替换当前版本指针：{error}"
+                )));
+            }
+        }
+        fs::rename(&temporary, &pointer)
+            .map_err(|error| AppError::Permission(format!("无法激活当前版本指针：{error}")))
     }
 
     /// Keeper 升级前保存数据库和伴随 WAL/SHM，避免未合并写入丢失。
@@ -260,26 +310,8 @@ fn create_directory_link(target: &Path, link: &Path) -> Result<(), AppError> {
         .map_err(|error| AppError::Permission(format!("无法创建版本链接：{error}")))
 }
 
-#[cfg(windows)]
-fn create_directory_link(target: &Path, link: &Path) -> Result<(), AppError> {
-    std::os::windows::fs::symlink_dir(target, link)
-        .map_err(|error| AppError::Permission(format!("无法创建版本链接：{error}")))
-}
-
-#[cfg(not(any(unix, windows)))]
-fn create_directory_link(_: &Path, _: &Path) -> Result<(), AppError> {
-    Err(AppError::State("当前平台不支持版本链接".into()))
-}
-
 #[cfg(unix)]
 fn replace_current_link(next: &Path, current: &Path) -> Result<(), AppError> {
-    fs::rename(next, current)
-        .map_err(|error| AppError::Permission(format!("无法切换当前版本：{error}")))
-}
-
-#[cfg(not(unix))]
-fn replace_current_link(next: &Path, current: &Path) -> Result<(), AppError> {
-    remove_path_if_exists(current)?;
     fs::rename(next, current)
         .map_err(|error| AppError::Permission(format!("无法切换当前版本：{error}")))
 }
