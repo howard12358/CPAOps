@@ -223,6 +223,7 @@ fn task_diagnostics(paths: &RuntimePaths) -> String {
                 "Write-Output \"=== $task ===\"; ",
                 "Get-ScheduledTask -TaskName $task | Format-List TaskName,State,Actions,Principal; ",
                 "Get-ScheduledTaskInfo -TaskName $task | Format-List LastRunTime,LastTaskResult,NumberOfMissedRuns,NextRunTime; ",
+                "Export-ScheduledTask -TaskName $task; ",
                 "}"
             ),
         ])
