@@ -215,7 +215,7 @@ impl<R: CommandRunner> Platform for WindowsPlatform<R> {
         let script = concat!(
             "param([string]$Root, [string]$CliWrapper, [string]$KeeperWrapper)\n",
             "$ErrorActionPreference = 'Stop'\n",
-            "function Quote-TaskArgument([string]$Value) { \"'\" + $Value.Replace(\"'\", \"''\") + \"'\" }\n",
+            "function Quote-TaskArgument([string]$Value) { '\"' + $Value.Replace('\"', '\\\"') + '\"' }\n",
             "$wrappers = @{ 'CPAStack-CLIProxyAPI' = $CliWrapper; 'CPAStack-UsageKeeper' = $KeeperWrapper }\n",
             "foreach ($entry in $wrappers.GetEnumerator()) {\n",
             "  $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + (Quote-TaskArgument $entry.Value) + ' -Root ' + (Quote-TaskArgument $Root)\n",

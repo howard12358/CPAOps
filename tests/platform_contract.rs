@@ -417,6 +417,11 @@ fn windows_install_secures_runtime_tree_and_registers_system_startup_tasks() {
             .iter()
             .any(|script| script.contains("Register-ScheduledTask"))
     );
+    assert!(scripts.iter().any(|script| {
+        script.contains(
+            "function Quote-TaskArgument([string]$Value) { '\"' + $Value.Replace('\"', '\\\"') + '\"' }",
+        )
+    }));
     assert!(
         scripts
             .iter()
