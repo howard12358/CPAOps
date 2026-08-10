@@ -73,18 +73,28 @@ fn main() {
 }
 
 fn open_directory(path: &std::path::Path) -> Result<(), AppError> {
-    #[cfg(target_os = "macos")]
-    let result = ProcessCommand::new("open").arg(path).status();
     #[cfg(target_os = "windows")]
-    let result = ProcessCommand::new("explorer").arg(path).status();
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
-    let result = ProcessCommand::new("xdg-open").arg(path).status();
+    {
+        ProcessCommand::new("explorer")
+            .arg(path)
+            .spawn()
+            .map_err(|_| AppError::State("无法打开运行目录".into()))?;
+        Ok(())
+    }
 
-    result
-        .map_err(|_| AppError::State("无法打开运行目录".into()))?
-        .success()
-        .then_some(())
-        .ok_or_else(|| AppError::State("无法打开运行目录".into()))
+    #[cfg(not(target_os = "windows"))]
+    {
+        #[cfg(target_os = "macos")]
+        let result = ProcessCommand::new("open").arg(path).status();
+        #[cfg(not(target_os = "macos"))]
+        let result = ProcessCommand::new("xdg-open").arg(path).status();
+
+        result
+            .map_err(|_| AppError::State("无法打开运行目录".into()))?
+            .success()
+            .then_some(())
+            .ok_or_else(|| AppError::State("无法打开运行目录".into()))
+    }
 }
 
 fn print_output(output: &Output, json: bool, debug: bool) {
