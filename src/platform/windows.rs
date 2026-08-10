@@ -1,7 +1,7 @@
 use std::env;
 use std::ffi::OsString;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use crate::domain::error::AppError;
 use crate::domain::runtime::RuntimePaths;
@@ -39,13 +39,6 @@ impl<R: CommandRunner> WindowsPlatform<R> {
             Service::Cli => "CPAStack-CLIProxyAPI",
             Service::Keeper => "CPAStack-UsageKeeper",
         }
-    }
-
-    fn wrapper_path(&self, service: Service) -> PathBuf {
-        self.paths.tasks.join(match service {
-            Service::Cli => "run-cli-proxy-api.ps1",
-            Service::Keeper => "run-cpa-usage-keeper.ps1",
-        })
     }
 
     fn run_powershell(
@@ -98,60 +91,51 @@ impl<R: CommandRunner> WindowsPlatform<R> {
         self.run_powershell_required(script, vec![self.paths.root.clone().into_os_string()])
     }
 
-    fn write_wrapper(&self, service: Service) -> Result<(), AppError> {
-        fs::create_dir_all(&self.paths.tasks)
-            .map_err(|_| AppError::State("无法创建 Windows 服务任务目录".into()))?;
+    fn register_current_task(&self, service: Service, release: &Path) -> Result<(), AppError> {
         let definition = ServiceCatalog::definition(service);
+        let binary = release.join(definition.windows_binary_name);
+        if !binary.is_file() {
+            return Err(AppError::State(format!(
+                "当前版本缺少 Windows 服务二进制：{}",
+                binary.display()
+            )));
+        }
         let config = match service {
-            Service::Cli => "config\\config.yaml",
-            Service::Keeper => "config\\keeper.env",
+            Service::Cli => self.paths.config.join("config.yaml"),
+            Service::Keeper => self.paths.config.join("keeper.env"),
         };
         let argument = match service {
             Service::Cli => "-config",
             Service::Keeper => "-env",
         };
-        // The runtime root is supplied by the scheduled task as a PowerShell parameter;
-        // no user-controlled path is interpolated into this script.
-        let wrapper = format!(
-            concat!(
-                "param([Parameter(Mandatory=$true)][string]$Root)\n",
-                "$ErrorActionPreference = 'Stop'\n",
-                "$outLog = Join-Path $Root 'logs\\{log}.out.log'\n",
-                "$errLog = Join-Path $Root 'logs\\{log}.err.log'\n",
-                "try {{\n",
-                "$disabled = Join-Path $Root 'state\\{service}.disabled'\n",
-                "if (Test-Path -LiteralPath $disabled) {{ exit 0 }}\n",
-                "$pointer = Join-Path $Root 'current\\{service}.path'\n",
-                "$release = (Get-Content -LiteralPath $pointer -Raw).Trim()\n",
-                "if ([string]::IsNullOrWhiteSpace($release)) {{ throw '当前版本指针为空' }}\n",
-                "$binary = Join-Path $release '{binary}'\n",
-                "$config = Join-Path $Root '{config}'\n",
-                "& $binary {argument} $config 1>> $outLog 2>> $errLog\n",
-                "}} catch {{\n",
-                "  $_ | Out-String | Add-Content -LiteralPath $errLog\n",
-                "  exit 1\n",
-                "}}\n"
-            ),
-            service = service.key(),
-            binary = definition.windows_binary_name,
-            config = config,
-            log = definition.log_prefix,
-            argument = argument,
+        let out_log = self
+            .paths
+            .logs
+            .join(format!("{}.out.log", definition.log_prefix));
+        let err_log = self
+            .paths
+            .logs
+            .join(format!("{}.err.log", definition.log_prefix));
+        let script = concat!(
+            "param([string]$TaskName, [string]$Binary, [string]$Config, [string]$OutLog, [string]$ErrLog, [string]$ServiceArgument)\n",
+            "$ErrorActionPreference = 'Stop'\n",
+            "$command = '\"\"' + $Binary + '\" ' + $ServiceArgument + ' \"' + $Config + '\" 1>> \"' + $OutLog + '\" 2>> \"' + $ErrLog + '\"\"'\n",
+            "$action = New-ScheduledTaskAction -Execute $env:ComSpec -Argument ('/D /S /C ' + $command)\n",
+            "$trigger = New-ScheduledTaskTrigger -AtStartup\n",
+            "$settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)\n",
+            "Register-ScheduledTask -TaskName $TaskName -Action $action -Trigger $trigger -Settings $settings -User 'SYSTEM' -RunLevel Highest -Force | Out-Null\n"
         );
-        let path = self.wrapper_path(service);
-        if fs::read_to_string(&path)
-            .ok()
-            .as_deref()
-            .is_some_and(|existing| existing == wrapper)
-        {
-            return Ok(());
-        }
-        fs::write(&path, wrapper).map_err(|error| {
-            AppError::State(format!(
-                "无法写入 Windows 服务包装器 {}：{error}",
-                path.display()
-            ))
-        })
+        self.run_powershell_required(
+            script,
+            vec![
+                OsString::from(Self::task_name(service)),
+                binary.into_os_string(),
+                config.into_os_string(),
+                out_log.into_os_string(),
+                err_log.into_os_string(),
+                OsString::from(argument),
+            ],
+        )
     }
 
     fn clear_disabled(&self, service: Service) -> Result<(), AppError> {
@@ -214,30 +198,6 @@ impl<R: CommandRunner> Platform for WindowsPlatform<R> {
                 .map_err(|_| AppError::State("无法创建 Windows 运行目录".into()))?;
         }
         self.set_root_acl()?;
-        self.write_wrapper(Service::Cli)?;
-        self.write_wrapper(Service::Keeper)?;
-
-        let script = concat!(
-            "param([string]$Root, [string]$CliWrapper, [string]$KeeperWrapper)\n",
-            "$ErrorActionPreference = 'Stop'\n",
-            "function Quote-TaskArgument([string]$Value) { '\"' + $Value.Replace('\"', '\\\"') + '\"' }\n",
-            "$wrappers = @{ 'CPAStack-CLIProxyAPI' = $CliWrapper; 'CPAStack-UsageKeeper' = $KeeperWrapper }\n",
-            "foreach ($entry in $wrappers.GetEnumerator()) {\n",
-            "  $arguments = '-NoProfile -NonInteractive -ExecutionPolicy Bypass -File ' + (Quote-TaskArgument $entry.Value) + ' -Root ' + (Quote-TaskArgument $Root)\n",
-            "  $action = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument $arguments\n",
-            "  $trigger = New-ScheduledTaskTrigger -AtStartup\n",
-            "  $settings = New-ScheduledTaskSettingsSet -RestartCount 999 -RestartInterval (New-TimeSpan -Minutes 1) -ExecutionTimeLimit (New-TimeSpan -Days 0)\n",
-            "  Register-ScheduledTask -TaskName $entry.Key -Action $action -Trigger $trigger -Settings $settings -User 'SYSTEM' -RunLevel Highest -Force | Out-Null\n",
-            "}\n"
-        );
-        self.run_powershell_required(
-            script,
-            vec![
-                self.paths.root.clone().into_os_string(),
-                self.wrapper_path(Service::Cli).into_os_string(),
-                self.wrapper_path(Service::Keeper).into_os_string(),
-            ],
-        )?;
         self.configure_firewall()
     }
 
@@ -254,15 +214,13 @@ impl<R: CommandRunner> Platform for WindowsPlatform<R> {
                 OsString::from(Self::task_name(Service::Keeper)),
             ],
         )?;
-        remove_if_exists(&self.wrapper_path(Service::Cli))?;
-        remove_if_exists(&self.wrapper_path(Service::Keeper))?;
         self.remove_firewall()
     }
 
     fn start(&self, service: Service) -> Result<(), AppError> {
         self.clear_disabled(service)?;
         self.run_powershell_required(
-            "param([string]$TaskName) Start-ScheduledTask -TaskName $TaskName",
+            "param([string]$TaskName) Enable-ScheduledTask -TaskName $TaskName | Out-Null; Start-ScheduledTask -TaskName $TaskName",
             vec![OsString::from(Self::task_name(service))],
         )
     }
@@ -270,7 +228,7 @@ impl<R: CommandRunner> Platform for WindowsPlatform<R> {
     fn stop(&self, service: Service) -> Result<(), AppError> {
         self.mark_disabled(service)?;
         self.run_powershell_required(
-            "param([string]$TaskName) Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue",
+            "param([string]$TaskName) Disable-ScheduledTask -TaskName $TaskName | Out-Null; Stop-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue",
             vec![OsString::from(Self::task_name(service))],
         )
     }
@@ -302,7 +260,8 @@ impl<R: CommandRunner> Platform for WindowsPlatform<R> {
     }
 
     fn replace_current_link(&self, service: Service, release: &Path) -> Result<(), AppError> {
-        RuntimeStore::new(self.paths.clone()).set_current(service, release)
+        RuntimeStore::new(self.paths.clone()).set_current(service, release)?;
+        self.register_current_task(service, release)
     }
 
     fn is_port_listening(&self, service: Service) -> Result<bool, AppError> {
@@ -376,14 +335,6 @@ fn encode_powershell_invocation(script: &str, parameters: &[OsString]) -> Result
         script = script
     );
     Ok(encode_powershell(&invocation))
-}
-
-fn remove_if_exists(path: &Path) -> Result<(), AppError> {
-    match fs::remove_file(path) {
-        Ok(()) => Ok(()),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(_) => Err(AppError::State("无法移除 Windows 服务包装器".into())),
-    }
 }
 
 #[cfg(all(test, windows))]

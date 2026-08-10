@@ -415,17 +415,8 @@ fn windows_install_secures_runtime_tree_and_registers_system_startup_tasks() {
     assert!(
         scripts
             .iter()
-            .any(|script| script.contains("Register-ScheduledTask"))
+            .all(|script| !script.contains("Register-ScheduledTask"))
     );
-    assert!(scripts.iter().any(|script| {
-        script.contains(
-            "function Quote-TaskArgument([string]$Value) { '\"' + $Value.Replace('\"', '\\\"') + '\"' }",
-        )
-    }));
-    let cli_wrapper = std::fs::read_to_string(paths.tasks.join("run-cli-proxy-api.ps1")).unwrap();
-    assert!(cli_wrapper.contains("try {"));
-    assert!(cli_wrapper.contains("catch {"));
-    assert!(cli_wrapper.contains("Add-Content -LiteralPath $errLog"));
     assert!(
         scripts
             .iter()
@@ -436,28 +427,6 @@ fn windows_install_secures_runtime_tree_and_registers_system_startup_tasks() {
             .iter()
             .all(|script| !script.contains(paths.root.to_string_lossy().as_ref()))
     );
-}
-
-#[test]
-#[cfg(windows)]
-fn windows_install_reuses_an_unchanged_read_only_service_wrapper() {
-    let temp_dir = TempDir::new().unwrap();
-    let paths = paths(&temp_dir);
-    let runner = RecordingRunner::default();
-    let platform = WindowsPlatform::with_runner(runner, paths.clone());
-
-    platform.install_services().unwrap();
-
-    let wrapper = paths.tasks.join("run-cli-proxy-api.ps1");
-    let original_permissions = std::fs::metadata(&wrapper).unwrap().permissions();
-    let mut read_only_permissions = original_permissions.clone();
-    read_only_permissions.set_readonly(true);
-    std::fs::set_permissions(&wrapper, read_only_permissions).unwrap();
-
-    let result = platform.install_services();
-
-    std::fs::set_permissions(&wrapper, original_permissions).unwrap();
-    result.unwrap();
 }
 
 #[test]
@@ -480,17 +449,27 @@ fn windows_lifecycle_uses_tasks_and_disabled_marker() {
     assert!(
         scripts
             .iter()
+            .any(|script| script.contains("Disable-ScheduledTask"))
+    );
+    assert!(
+        scripts
+            .iter()
             .any(|script| script.contains("Start-ScheduledTask"))
+    );
+    assert!(
+        scripts
+            .iter()
+            .any(|script| script.contains("Enable-ScheduledTask"))
     );
 }
 
 #[test]
-#[cfg(windows)]
-fn windows_activation_writes_a_current_version_pointer_without_powershell_junction_commands() {
+fn windows_activation_registers_a_cmd_task_for_the_current_release() {
     let temp_dir = TempDir::new().unwrap();
     let paths = paths(&temp_dir);
     let release = paths.releases.join("cli-proxy-api").join("v1");
     std::fs::create_dir_all(&release).unwrap();
+    std::fs::write(release.join("cli-proxy-api.exe"), "fixture").unwrap();
     let runner = RecordingRunner::default();
     let platform = WindowsPlatform::with_runner(runner.clone(), paths.clone());
 
@@ -498,13 +477,35 @@ fn windows_activation_writes_a_current_version_pointer_without_powershell_juncti
         .replace_current_link(Service::Cli, &release)
         .unwrap();
 
+    #[cfg(windows)]
     assert_eq!(
         std::fs::read_to_string(paths.current.join("cli-proxy-api.path"))
             .unwrap()
             .trim(),
         release.display().to_string()
     );
-    assert!(runner.scripts().is_empty());
+    let script = runner.scripts().pop().unwrap();
+    assert!(script.contains("New-ScheduledTaskAction -Execute $env:ComSpec"));
+    assert!(script.contains("Register-ScheduledTask"));
+    assert_eq!(
+        powershell_parameters(&runner.calls()[0]),
+        Some(vec![
+            "CPAStack-CLIProxyAPI".into(),
+            release.join("cli-proxy-api.exe").display().to_string(),
+            paths.config.join("config.yaml").display().to_string(),
+            paths
+                .logs
+                .join("cli-proxy-api.out.log")
+                .display()
+                .to_string(),
+            paths
+                .logs
+                .join("cli-proxy-api.err.log")
+                .display()
+                .to_string(),
+            "-config".into(),
+        ])
+    );
 }
 
 #[test]
