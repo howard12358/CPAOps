@@ -507,7 +507,10 @@ impl Platform for UpdatePlatform {
         Ok(())
     }
     fn is_port_listening(&self, service: Service) -> Result<bool, AppError> {
-        Ok(service == Service::Cli || !self.paths.current.join(Service::Keeper.key()).exists())
+        Ok(service == Service::Cli
+            || RuntimeStore::new(self.paths.clone())
+                .current_target(Service::Keeper)?
+                .is_none())
     }
     fn wait_for_port(&self, service: Service) -> Result<bool, AppError> {
         self.is_port_listening(service)
