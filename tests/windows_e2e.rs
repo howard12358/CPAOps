@@ -74,7 +74,19 @@ fn windows_install_update_rollback_and_uninstall_use_real_tasks_and_fixture_rele
         ReleasePlatform::WindowsX86_64,
     );
 
-    app.run(&Command::Install).unwrap();
+    let installation = app.run(&Command::Install).unwrap();
+    assert!(
+        installation.data["services"]
+            .as_array()
+            .is_some_and(|services| {
+                services
+                    .iter()
+                    .all(|service| service["ok"].as_bool() == Some(true))
+            }),
+        "安装结果：{}\n服务日志：{}",
+        installation.to_json(),
+        service_logs(&paths)
+    );
     assert!(
         WindowsPlatform::new(paths.clone())
             .status(Service::Cli)
@@ -175,4 +187,20 @@ fn sha256(path: &Path) -> String {
 fn assert_current_version(paths: &RuntimePaths, service: Service, expected: &str) {
     let target = fs::read_link(paths.current.join(service.key())).unwrap();
     assert_eq!(target.file_name().unwrap(), expected);
+}
+
+fn service_logs(paths: &RuntimePaths) -> String {
+    ["cli-proxy-api", "cpa-usage-keeper"]
+        .into_iter()
+        .flat_map(|service| ["out", "err"].map(move |stream| (service, stream)))
+        .map(|(service, stream)| {
+            let path = paths.logs.join(format!("{service}.{stream}.log"));
+            format!(
+                "{}={}",
+                path.display(),
+                fs::read_to_string(&path).unwrap_or_default()
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
