@@ -34,6 +34,28 @@ fn invalid_command_uses_usage_exit_code() {
 }
 
 #[test]
+fn error_output_exposes_raw_diagnostic_only_in_debug_mode() {
+    let error = AppError::ServiceDiagnostic {
+        message: "Windows 服务管理失败：访问被拒绝。请以管理员身份运行 cpactl。".into(),
+        raw_diagnostic: "#< CLIXML <Objs><S S=\"Error\">Access is denied.</S></Objs>".into(),
+    };
+
+    let normal = cpactl::output::Output::from_error(&error, false);
+    assert_eq!(normal.data, json!(null));
+    assert!(!normal.message.contains("CLIXML"));
+
+    let debug = cpactl::output::Output::from_error(&error, true);
+    assert_eq!(
+        debug.data,
+        json!({
+            "debug": {
+                "raw_diagnostic": "#< CLIXML <Objs><S S=\"Error\">Access is denied.</S></Objs>"
+            }
+        })
+    );
+}
+
+#[test]
 fn cache_clean_json_removes_downloads_without_touching_config() {
     let root = TempDir::new().unwrap();
     let downloads = root.path().join("downloads");

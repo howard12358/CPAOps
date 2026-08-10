@@ -1,5 +1,7 @@
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
+
+use crate::domain::error::AppError;
 
 #[derive(Debug, Serialize)]
 pub struct Output {
@@ -7,15 +9,30 @@ pub struct Output {
     pub code: u8,
     pub message: String,
     pub data: Value,
+    #[serde(skip)]
+    debug: Value,
 }
 
 impl Output {
+    pub fn from_error(error: &AppError, debug: bool) -> Self {
+        let data = if debug {
+            error.raw_diagnostic().map_or(
+                Value::Null,
+                |raw_diagnostic| json!({ "debug": { "raw_diagnostic": raw_diagnostic } }),
+            )
+        } else {
+            Value::Null
+        };
+        Self::failure_with_data(error.exit_code(), error.to_string(), data)
+    }
+
     pub fn success(message: impl Into<String>) -> Self {
         Self {
             ok: true,
             code: 0,
             message: message.into(),
             data: Value::Null,
+            debug: Value::Null,
         }
     }
 
@@ -25,6 +42,7 @@ impl Output {
             code: 0,
             message: message.into(),
             data,
+            debug: Value::Null,
         }
     }
 
@@ -34,6 +52,7 @@ impl Output {
             code,
             message: message.into(),
             data: Value::Null,
+            debug: Value::Null,
         }
     }
 
@@ -43,12 +62,34 @@ impl Output {
             code,
             message: message.into(),
             data,
+            debug: Value::Null,
         }
     }
 
     pub fn to_json(&self) -> String {
         serde_json::to_string(self)
             .unwrap_or_else(|_| "{\"ok\":false,\"code\":1,\"message\":\"输出序列化失败\"}".into())
+    }
+
+    pub fn to_json_with_debug(&self, debug: bool) -> String {
+        if !debug || self.debug.is_null() {
+            return self.to_json();
+        }
+        let mut value = serde_json::to_value(self).unwrap_or(Value::Null);
+        if let Some(object) = value.as_object_mut() {
+            object.insert("debug".into(), self.debug.clone());
+        }
+        serde_json::to_string(&value)
+            .unwrap_or_else(|_| "{\"ok\":false,\"code\":1,\"message\":\"输出序列化失败\"}".into())
+    }
+
+    pub fn with_debug(mut self, debug: Value) -> Self {
+        self.debug = debug;
+        self
+    }
+
+    pub fn debug_text(&self) -> Option<String> {
+        (!self.debug.is_null()).then(|| self.debug.to_string())
     }
 
     pub fn human_message(&self) -> String {

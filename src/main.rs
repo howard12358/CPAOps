@@ -33,12 +33,12 @@ fn main() {
         };
         if let Command::Auth { action } = &cli.command {
             let output = cpactl::auth::run(paths, action)?;
-            print_output(&output, cli.json);
+            print_output(&output, cli.json, cli.debug);
             return Ok(());
         }
         if let Command::Upgrade { check } = &cli.command {
             let output = cpactl::upgrade::run(paths, *check, progress.as_ref())?;
-            print_output(&output, cli.json);
+            print_output(&output, cli.json, cli.debug);
             return Ok(());
         }
         let platform = native_platform(paths.clone())?;
@@ -50,7 +50,7 @@ fn main() {
         if let Command::Path { open: true, .. } = &cli.command {
             open_directory(&runtime_root)?;
         }
-        print_output(&output, cli.json);
+        print_output(&output, cli.json, cli.debug);
         if !output.ok {
             std::process::exit(i32::from(output.code));
         }
@@ -67,7 +67,7 @@ fn main() {
     })();
 
     if let Err(error) = result {
-        print_failure(&error, cli.json);
+        print_failure(&error, cli.json, cli.debug);
         std::process::exit(i32::from(error.exit_code()));
     }
 }
@@ -87,20 +87,30 @@ fn open_directory(path: &std::path::Path) -> Result<(), AppError> {
         .ok_or_else(|| AppError::State("无法打开运行目录".into()))
 }
 
-fn print_output(output: &Output, json: bool) {
+fn print_output(output: &Output, json: bool, debug: bool) {
     if json {
-        println!("{}", output.to_json());
+        println!("{}", output.to_json_with_debug(debug));
     } else {
         println!("{}", output.human_message());
+        if debug {
+            if let Some(debug_text) = output.debug_text() {
+                eprintln!("原始诊断：\n{debug_text}");
+            }
+        }
     }
 }
 
-fn print_failure(error: &AppError, json: bool) {
-    let output = Output::failure(error.exit_code(), error.to_string());
+fn print_failure(error: &AppError, json: bool, debug: bool) {
+    let output = Output::from_error(error, debug);
     if json {
         println!("{}", output.to_json());
     } else {
         eprintln!("错误：{}", output.message);
+        if debug {
+            if let Some(raw_diagnostic) = error.raw_diagnostic() {
+                eprintln!("原始诊断：\n{raw_diagnostic}");
+            }
+        }
     }
 }
 

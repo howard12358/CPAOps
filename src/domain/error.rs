@@ -14,6 +14,11 @@ pub enum AppError {
     Verification(String),
     #[error("{0}")]
     Service(String),
+    #[error("{message}")]
+    ServiceDiagnostic {
+        message: String,
+        raw_diagnostic: String,
+    },
     #[error("{0}")]
     Internal(String),
 }
@@ -26,8 +31,15 @@ impl AppError {
             Self::State(_) => 4,
             Self::Network(_) => 5,
             Self::Verification(_) => 6,
-            Self::Service(_) => 7,
+            Self::Service(_) | Self::ServiceDiagnostic { .. } => 7,
             Self::Internal(_) => 1,
+        }
+    }
+
+    pub fn raw_diagnostic(&self) -> Option<&str> {
+        match self {
+            Self::ServiceDiagnostic { raw_diagnostic, .. } => Some(raw_diagnostic),
+            _ => None,
         }
     }
 }

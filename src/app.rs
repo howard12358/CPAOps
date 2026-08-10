@@ -662,12 +662,7 @@ impl<P: Platform> ServiceLifecycle for PlatformLifecycle<'_, P> {
 fn workflow_result(service: Service, result: Result<(), AppError>) -> Value {
     match result {
         Ok(()) => json!({ "service": service.key(), "ok": true }),
-        Err(error) => json!({
-            "service": service.key(),
-            "ok": false,
-            "code": error.exit_code(),
-            "message": error.to_string(),
-        }),
+        Err(error) => workflow_failure(service, error),
     }
 }
 
@@ -682,25 +677,47 @@ fn update_workflow_result(
             "version": version,
             "state": state,
         }),
-        Err(error) => json!({
-            "service": service.key(),
-            "ok": false,
-            "code": error.exit_code(),
-            "message": error.to_string(),
-        }),
+        Err(error) => workflow_failure(service, error),
     }
 }
 
-fn workflow_output(action: &str, results: Vec<Value>) -> Result<Output, AppError> {
+fn workflow_failure(service: Service, error: AppError) -> Value {
+    let mut result = json!({
+        "service": service.key(),
+        "ok": false,
+        "code": error.exit_code(),
+        "message": error.to_string(),
+    });
+    if let Some(raw_diagnostic) = error.raw_diagnostic() {
+        result["_debug_raw_diagnostic"] = Value::String(raw_diagnostic.into());
+    }
+    result
+}
+
+fn workflow_output(action: &str, mut results: Vec<Value>) -> Result<Output, AppError> {
+    let debug_services = results
+        .iter_mut()
+        .filter_map(|result| {
+            let object = result.as_object_mut()?;
+            let raw_diagnostic = object.remove("_debug_raw_diagnostic")?;
+            Some(json!({
+                "service": object.get("service").cloned().unwrap_or(Value::Null),
+                "raw_diagnostic": raw_diagnostic,
+            }))
+        })
+        .collect::<Vec<_>>();
+    let debug = (!debug_services.is_empty()).then(|| json!({ "services": debug_services }));
     let failures = results
         .iter()
         .filter(|result| result["ok"] == Value::Bool(false))
         .collect::<Vec<_>>();
     if failures.is_empty() {
-        return Ok(Output::success_with_data(
-            format!("{action}完成"),
-            json!({ "services": results }),
-        ));
+        let output =
+            Output::success_with_data(format!("{action}完成"), json!({ "services": results }));
+        return Ok(match debug {
+            Some(debug) => output.with_debug(debug),
+            None => output,
+        });
     }
     let code = failures
         .iter()
@@ -708,11 +725,15 @@ fn workflow_output(action: &str, results: Vec<Value>) -> Result<Output, AppError
         .max()
         .and_then(|code| u8::try_from(code).ok())
         .unwrap_or(7);
-    Ok(Output::failure_with_data(
+    let output = Output::failure_with_data(
         code,
         format!("{action}部分失败，已分别保留每项结果"),
         json!({ "services": results }),
-    ))
+    );
+    Ok(match debug {
+        Some(debug) => output.with_debug(debug),
+        None => output,
+    })
 }
 
 fn release_asset_name(name: &str) -> Result<&str, AppError> {

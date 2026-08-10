@@ -430,6 +430,28 @@ fn windows_install_secures_runtime_tree_and_registers_system_startup_tasks() {
 }
 
 #[test]
+fn windows_service_failure_hides_clixml_and_keeps_raw_diagnostic() {
+    let temp_dir = TempDir::new().unwrap();
+    let runner = RecordingRunner::with_results([CommandOutput {
+        success: false,
+        stdout: String::new(),
+        stderr: "#< CLIXML\n<Objs><S S=\"Error\">Access is denied._x000D_</S></Objs>".into(),
+    }]);
+    let platform = WindowsPlatform::with_runner(runner, paths(&temp_dir));
+
+    let error = platform.install_services().unwrap_err();
+
+    assert_eq!(
+        error.to_string(),
+        "Windows 服务管理失败：访问被拒绝。请以管理员身份运行 cpactl，并执行 cpactl doctor 检查环境。"
+    );
+    assert_eq!(
+        error.raw_diagnostic(),
+        Some("#< CLIXML\n<Objs><S S=\"Error\">Access is denied._x000D_</S></Objs>")
+    );
+}
+
+#[test]
 fn windows_lifecycle_uses_tasks_and_disabled_marker() {
     let temp_dir = TempDir::new().unwrap();
     let paths = paths(&temp_dir);

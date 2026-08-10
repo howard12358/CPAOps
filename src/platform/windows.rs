@@ -66,7 +66,7 @@ impl<R: CommandRunner> WindowsPlatform<R> {
         if output.success {
             Ok(())
         } else {
-            Err(command_failure("Windows 服务管理命令执行失败", output))
+            Err(command_failure("Windows 服务管理失败", output))
         }
     }
 
@@ -155,10 +155,39 @@ impl<R: CommandRunner> WindowsPlatform<R> {
 }
 
 fn command_failure(prefix: &str, output: CommandOutput) -> AppError {
-    if output.stderr.is_empty() {
-        AppError::Service(prefix.into())
+    let raw_diagnostic = if output.stderr.is_empty() {
+        output.stdout
     } else {
-        AppError::Service(format!("{prefix}：{}", output.stderr))
+        output.stderr
+    };
+    if raw_diagnostic.is_empty() {
+        AppError::Service(format!(
+            "{prefix}：系统命令未返回可用诊断。请执行 cpactl doctor 检查环境。"
+        ))
+    } else {
+        AppError::ServiceDiagnostic {
+            message: format!(
+                "{prefix}：{}。请以管理员身份运行 cpactl，并执行 cpactl doctor 检查环境。",
+                windows_failure_reason(&raw_diagnostic)
+            ),
+            raw_diagnostic,
+        }
+    }
+}
+
+fn windows_failure_reason(raw_diagnostic: &str) -> &'static str {
+    let diagnostic = raw_diagnostic.to_ascii_lowercase();
+    if diagnostic.contains("access is denied") || raw_diagnostic.contains("拒绝访问") {
+        "访问被拒绝"
+    } else if diagnostic.contains("cannot find")
+        || diagnostic.contains("not found")
+        || raw_diagnostic.contains("找不到")
+    {
+        "找不到所需的系统资源"
+    } else if diagnostic.contains("parameter") || raw_diagnostic.contains("参数") {
+        "系统命令参数无效"
+    } else {
+        "系统命令执行失败"
     }
 }
 

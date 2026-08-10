@@ -14,6 +14,8 @@ pub struct Cli {
     pub root: Option<PathBuf>,
     #[arg(long, global = true)]
     pub json: bool,
+    #[arg(long, global = true, help = "输出原始系统诊断，仅用于排障")]
+    pub debug: bool,
     #[command(subcommand)]
     pub command: Command,
 }
