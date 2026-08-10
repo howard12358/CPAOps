@@ -49,10 +49,10 @@ fn status(token_store: &GithubTokenStore) -> Result<Output, AppError> {
     let authenticated = token_store.load()?.is_some();
     Ok(Output::success_with_data(
         if authenticated {
-            "GitHub 已认证"
+            "GitHub 已认证（Token 已保存）"
         } else {
             "GitHub 未认证"
         },
-        json!({ "authenticated": authenticated }),
+        json!({ "authenticated": authenticated, "token_path": token_store.path().display().to_string() }),
     ))
 }

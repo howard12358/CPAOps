@@ -372,6 +372,20 @@ impl ProxyConfig {
         "已配置代理"
     }
 
+    pub fn display_entries(&self) -> Vec<(String, String)> {
+        self.urls()
+            .filter_map(|(kind, value)| {
+                let url = Url::parse(value).ok()?;
+                let host = url.host_str()?;
+                let port = url
+                    .port()
+                    .map(|port| format!(":{port}"))
+                    .unwrap_or_default();
+                Some((kind.into(), format!("{}://{host}{port}", url.scheme())))
+            })
+            .collect()
+    }
+
     pub(crate) fn urls(&self) -> impl Iterator<Item = (&str, &str)> {
         [
             ("https", self.https_proxy.as_deref()),

@@ -519,6 +519,16 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         }))
     }
 
+    fn lifecycle_entry(&self, service: Service, status: &str) -> Result<Value, AppError> {
+        let definition = ServiceCatalog::definition(service);
+        Ok(json!({
+            "service": service.key(),
+            "status": status,
+            "port": definition.port,
+            "version": self.current_version(service)?,
+        }))
+    }
+
     fn logs(&self, service: Service, lines: usize) -> Result<Output, AppError> {
         self.require_installed()?;
         let paths = log_paths(&self.paths, service);
@@ -539,22 +549,32 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
 
     fn start(&self, service_name: Option<&str>) -> Result<Output, AppError> {
         self.prepare_lifecycle()?;
+        let mut services = Vec::new();
         for service in resolve_services(service_name)? {
             self.require_registered(service)?;
             clear_disabled(&self.paths, service)?;
             self.platform.start(service)?;
+            services.push(self.lifecycle_entry(service, "已启动")?);
         }
-        Ok(Output::success("服务已启动"))
+        Ok(Output::success_with_data(
+            "服务已启动",
+            json!({ "services": services }),
+        ))
     }
 
     fn stop(&self, service_name: Option<&str>) -> Result<Output, AppError> {
         self.prepare_lifecycle()?;
+        let mut services = Vec::new();
         for service in resolve_services(service_name)? {
             self.require_registered(service)?;
             mark_disabled(&self.paths, service)?;
             self.platform.stop(service)?;
+            services.push(self.lifecycle_entry(service, "已停止")?);
         }
-        Ok(Output::success("服务已停止"))
+        Ok(Output::success_with_data(
+            "服务已停止",
+            json!({ "services": services }),
+        ))
     }
 
     fn restart(&self, service_name: Option<&str>) -> Result<Output, AppError> {
@@ -570,14 +590,29 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
     fn proxy(&self, action: &ProxyAction) -> Result<Output, AppError> {
         let settings = GithubTokenStore::default_location();
         match action {
-            ProxyAction::Show => Ok(Output::success_with_data(
-                if settings.load_proxy()?.is_some() {
-                    "已配置代理"
+            ProxyAction::Show => {
+                let proxy = settings.load_proxy()?;
+                let entries = proxy
+                    .as_ref()
+                    .map(ProxyConfig::display_entries)
+                    .unwrap_or_default();
+                let message = if entries.is_empty() {
+                    "未配置代理".into()
                 } else {
-                    "未配置代理"
-                },
-                json!({ "configured": settings.load_proxy()?.is_some() }),
-            )),
+                    format!(
+                        "已配置代理\n{}",
+                        entries
+                            .iter()
+                            .map(|(kind, url)| format!("{}: {}", kind.to_uppercase(), url))
+                            .collect::<Vec<_>>()
+                            .join("\n")
+                    )
+                };
+                Ok(Output::success_with_data(
+                    message,
+                    json!({ "configured": proxy.is_some(), "proxies": entries }),
+                ))
+            }
             ProxyAction::Clear => {
                 settings.clear_proxy()?;
                 Ok(Output::success("已清除代理"))
