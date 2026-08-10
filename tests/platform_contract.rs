@@ -405,6 +405,16 @@ fn windows_install_secures_runtime_tree_and_registers_system_startup_tasks() {
     assert!(
         scripts
             .iter()
+            .any(|script| script.contains("$item.GetAccessControl()"))
+    );
+    assert!(
+        scripts
+            .iter()
+            .all(|script| !script.contains("Get-Acl") && !script.contains("Set-Acl"))
+    );
+    assert!(
+        scripts
+            .iter()
             .any(|script| script.contains("Register-ScheduledTask"))
     );
     assert!(

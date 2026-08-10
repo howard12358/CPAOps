@@ -84,14 +84,14 @@ impl<R: CommandRunner> WindowsPlatform<R> {
             "$administrators = [Security.Principal.SecurityIdentifier]::new('S-1-5-32-544')\n",
             "$items = @((Get-Item -LiteralPath $Root -Force)) + @(Get-ChildItem -LiteralPath $Root -Force -Recurse)\n",
             "foreach ($item in $items) {\n",
-            "  $acl = Get-Acl -LiteralPath $item.FullName\n",
+            "  $acl = $item.GetAccessControl()\n",
             "  $acl.SetAccessRuleProtection($true, $false)\n",
             "  $inheritance = if ($item.PSIsContainer) { [Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [Security.AccessControl.InheritanceFlags]::ObjectInherit } else { [Security.AccessControl.InheritanceFlags]::None }\n",
             "  foreach ($identity in @($system, $administrators)) {\n",
             "    $rule = [Security.AccessControl.FileSystemAccessRule]::new($identity, [Security.AccessControl.FileSystemRights]::FullControl, $inheritance, [Security.AccessControl.PropagationFlags]::None, [Security.AccessControl.AccessControlType]::Allow)\n",
             "    $acl.SetAccessRule($rule)\n",
             "  }\n",
-            "  Set-Acl -LiteralPath $item.FullName -AclObject $acl\n",
+            "  $item.SetAccessControl($acl)\n",
             "}\n"
         );
         self.run_powershell_required(script, vec![self.paths.root.clone().into_os_string()])
