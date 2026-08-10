@@ -422,6 +422,10 @@ fn windows_install_secures_runtime_tree_and_registers_system_startup_tasks() {
             "function Quote-TaskArgument([string]$Value) { '\"' + $Value.Replace('\"', '\\\"') + '\"' }",
         )
     }));
+    let cli_wrapper = std::fs::read_to_string(paths.tasks.join("run-cli-proxy-api.ps1")).unwrap();
+    assert!(cli_wrapper.contains("try {"));
+    assert!(cli_wrapper.contains("catch {"));
+    assert!(cli_wrapper.contains("Add-Content -LiteralPath $errLog"));
     assert!(
         scripts
             .iter()

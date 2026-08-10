@@ -116,6 +116,9 @@ impl<R: CommandRunner> WindowsPlatform<R> {
             concat!(
                 "param([Parameter(Mandatory=$true)][string]$Root)\n",
                 "$ErrorActionPreference = 'Stop'\n",
+                "$outLog = Join-Path $Root 'logs\\{log}.out.log'\n",
+                "$errLog = Join-Path $Root 'logs\\{log}.err.log'\n",
+                "try {{\n",
                 "$disabled = Join-Path $Root 'state\\{service}.disabled'\n",
                 "if (Test-Path -LiteralPath $disabled) {{ exit 0 }}\n",
                 "$pointer = Join-Path $Root 'current\\{service}.path'\n",
@@ -123,9 +126,11 @@ impl<R: CommandRunner> WindowsPlatform<R> {
                 "if ([string]::IsNullOrWhiteSpace($release)) {{ throw '当前版本指针为空' }}\n",
                 "$binary = Join-Path $release '{binary}'\n",
                 "$config = Join-Path $Root '{config}'\n",
-                "$outLog = Join-Path $Root 'logs\\{log}.out.log'\n",
-                "$errLog = Join-Path $Root 'logs\\{log}.err.log'\n",
-                "& $binary {argument} $config 1>> $outLog 2>> $errLog\n"
+                "& $binary {argument} $config 1>> $outLog 2>> $errLog\n",
+                "}} catch {{\n",
+                "  $_ | Out-String | Add-Content -LiteralPath $errLog\n",
+                "  exit 1\n",
+                "}}\n"
             ),
             service = service.key(),
             binary = definition.windows_binary_name,
