@@ -47,12 +47,16 @@ fn login(
 
 fn status(token_store: &GithubTokenStore) -> Result<Output, AppError> {
     let authenticated = token_store.load()?.is_some();
+    let message = if authenticated {
+        format!(
+            "GitHub 已认证（Token 已保存）\n保存位置：{}",
+            token_store.path().display()
+        )
+    } else {
+        "GitHub 未认证\n建议：运行 cpactl auth login".into()
+    };
     Ok(Output::success_with_data(
-        if authenticated {
-            "GitHub 已认证（Token 已保存）"
-        } else {
-            "GitHub 未认证"
-        },
+        message,
         json!({ "authenticated": authenticated, "token_path": token_store.path().display().to_string() }),
     ))
 }

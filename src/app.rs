@@ -579,12 +579,17 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
 
     fn restart(&self, service_name: Option<&str>) -> Result<Output, AppError> {
         self.prepare_lifecycle()?;
+        let mut services = Vec::new();
         for service in resolve_services(service_name)? {
             self.require_registered(service)?;
             clear_disabled(&self.paths, service)?;
             self.platform.restart(service)?;
+            services.push(self.lifecycle_entry(service, "已重启")?);
         }
-        Ok(Output::success("服务已重启"))
+        Ok(Output::success_with_data(
+            "服务已重启",
+            json!({ "services": services }),
+        ))
     }
 
     fn proxy(&self, action: &ProxyAction) -> Result<Output, AppError> {
