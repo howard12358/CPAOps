@@ -61,9 +61,13 @@ impl ReleaseProvider for FixtureProvider {
 
 #[test]
 fn windows_install_update_rollback_and_uninstall_use_real_tasks_and_fixture_releases() {
-    let temporary = tempfile::tempdir().unwrap();
-    let paths = RuntimePaths::from_root(temporary.path().join("runtime")).unwrap();
-    let provider = fixture_provider(temporary.path());
+    let fixtures = tempfile::tempdir().unwrap();
+    let runtime = tempfile::Builder::new()
+        .prefix("CPAStack-E2E-")
+        .tempdir_in(system_runtime_parent())
+        .unwrap();
+    let paths = RuntimePaths::from_root(runtime.path().to_path_buf()).unwrap();
+    let provider = fixture_provider(fixtures.path());
     let config = ConfigStore::new(paths.clone());
     config
         .initialize("e2e-management-key", "e2e-keeper-password")
@@ -121,6 +125,12 @@ fn windows_install_update_rollback_and_uninstall_use_real_tasks_and_fixture_rele
             .unwrap()
             .managed
     );
+}
+
+fn system_runtime_parent() -> PathBuf {
+    std::env::var_os("ProgramData")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from(r"C:\\ProgramData"))
 }
 
 fn fixture_provider(directory: &Path) -> FixtureProvider {
