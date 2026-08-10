@@ -52,6 +52,28 @@ impl Output {
     }
 
     pub fn human_message(&self) -> String {
+        if let Some(checks) = self.data.get("checks").and_then(Value::as_array) {
+            let mut output = self.message.clone();
+            for check in checks {
+                let name = check
+                    .get("name")
+                    .and_then(Value::as_str)
+                    .unwrap_or("未知检查");
+                let level = match check.get("level").and_then(Value::as_str) {
+                    Some("pass") => "通过",
+                    Some("warning") => "警告",
+                    Some("skipped") => "跳过",
+                    _ => "失败",
+                };
+                let message = check.get("message").and_then(Value::as_str).unwrap_or("");
+                output.push_str(&format!("\n{level} {name}：{message}"));
+                if let Some(suggestion) = check.get("suggestion").and_then(Value::as_str) {
+                    output.push_str(&format!("\n  建议：{suggestion}"));
+                }
+            }
+            return output;
+        }
+
         let Some(services) = self.data.get("services").and_then(Value::as_array) else {
             return self.message.clone();
         };

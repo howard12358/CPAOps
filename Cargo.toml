@@ -8,6 +8,7 @@ rust-version = "1.85"
 base64 = "0.22"
 clap = { version = "4.5", features = ["derive"] }
 flate2 = "1"
+fs2 = "0.4"
 futures-util = "0.3"
 indicatif = "0.17"
 serde = { version = "1", features = ["derive"] }

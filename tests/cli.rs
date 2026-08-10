@@ -61,6 +61,25 @@ fn cache_clean_json_removes_downloads_without_touching_config() {
 }
 
 #[test]
+fn doctor_json_reports_checks_without_exposing_config_secrets() {
+    let root = TempDir::new().unwrap();
+    fs::create_dir_all(root.path().join("config")).unwrap();
+    fs::write(
+        root.path().join("config").join("config.yaml"),
+        "management-key: very-secret-value\n",
+    )
+    .unwrap();
+
+    Command::cargo_bin("cpactl")
+        .unwrap()
+        .args(["--root", root.path().to_str().unwrap(), "--json", "doctor"])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"checks\""))
+        .stdout(predicate::str::contains("very-secret-value").not());
+}
+
+#[test]
 fn version_output_uses_compact_release_style_without_binary_hash() {
     Command::cargo_bin("cpactl")
         .unwrap()
@@ -115,6 +134,7 @@ fn help_lists_each_command_with_its_chinese_purpose() {
     assert!(commands.contains("update     查询并更新到 GitHub 最新 Release"));
     assert!(commands.contains("auth       登录、查看或退出 GitHub 认证"));
     assert!(commands.contains("cache      管理可安全重新下载的缓存"));
+    assert!(commands.contains("doctor     诊断本机运行环境"));
 }
 
 #[test]
@@ -257,6 +277,26 @@ fn human_status_output_includes_each_service_state() {
     assert_eq!(
         output.human_message(),
         "服务状态\ncli-proxy-api：运行中（端口 8317，版本 7.2.120）"
+    );
+}
+
+#[test]
+fn human_doctor_output_lists_check_level_and_suggestion() {
+    let output = cpactl::output::Output::success_with_data(
+        "诊断完成",
+        json!({
+            "checks": [{
+                "name": "运行权限",
+                "level": "fail",
+                "message": "需要管理员权限",
+                "suggestion": "以管理员身份重新打开 PowerShell。"
+            }]
+        }),
+    );
+
+    assert_eq!(
+        output.human_message(),
+        "诊断完成\n失败 运行权限：需要管理员权限\n  建议：以管理员身份重新打开 PowerShell。"
     );
 }
 

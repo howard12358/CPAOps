@@ -140,6 +140,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
                 json!({ "root": self.paths.root.display().to_string() }),
             )),
             Command::Status => self.status(),
+            Command::Doctor { network } => self.doctor(*network),
             Command::Logs { service, lines, .. } => {
                 self.logs(ServiceCatalog::resolve(service)?, *lines)
             }
@@ -173,6 +174,124 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             json!({
                 "root": self.paths.root.display().to_string(),
                 "services": services,
+            }),
+        ))
+    }
+
+    fn doctor(&self, network: bool) -> Result<Output, AppError> {
+        let mut checks = Vec::new();
+        push_doctor_check(
+            &mut checks,
+            "平台支持",
+            self.platform.check_supported(),
+            "请使用 macOS Apple Silicon 或 Windows x64。",
+        );
+        push_doctor_check(
+            &mut checks,
+            "运行权限",
+            self.platform.check_permissions(),
+            "Windows 请使用提升权限的管理员 PowerShell。",
+        );
+        push_doctor_check(
+            &mut checks,
+            "运行目录布局",
+            doctor_runtime_layout(&self.paths),
+            "请先运行 cpactl install。",
+        );
+        push_doctor_warning(
+            &mut checks,
+            "服务配置",
+            self.config.validate(),
+            "请检查 config/config.yaml 与 config/keeper.env，然后重新运行 cpactl install。",
+        );
+
+        let settings = GithubTokenStore::default_location();
+        push_doctor_warning(
+            &mut checks,
+            "GitHub 认证",
+            settings
+                .load()
+                .and_then(|token| token.ok_or_else(|| AppError::State("未配置 GitHub 认证".into())))
+                .map(|_| ()),
+            "GitHub 拒绝下载时，请运行 cpactl auth login。",
+        );
+        push_doctor_check(
+            &mut checks,
+            "下载代理",
+            settings
+                .load_proxy()
+                .and_then(|proxy| proxy.ok_or_else(|| AppError::State("未配置下载代理".into())))
+                .map(|_| ()),
+            "需要代理时，请运行 cpactl proxy set。",
+        );
+
+        for service in [Service::Cli, Service::Keeper] {
+            push_doctor_check(
+                &mut checks,
+                &format!("{} 服务状态", service.key()),
+                self.platform.status(service).and_then(|status| {
+                    if status.managed && status.listening {
+                        Ok(())
+                    } else if !status.managed {
+                        Err(AppError::State("服务未注册".into()))
+                    } else {
+                        Err(AppError::State("服务未监听预期端口".into()))
+                    }
+                }),
+                "请运行 cpactl install 注册服务。",
+            );
+            push_doctor_check(
+                &mut checks,
+                &format!("{} 当前版本", service.key()),
+                self.current_version(service).and_then(|version| {
+                    let version =
+                        version.ok_or_else(|| AppError::State("当前版本链接不存在".into()))?;
+                    ReleaseTransaction::new(self.paths.clone())
+                        .verified_release(service, &version)?
+                        .ok_or_else(|| AppError::State("当前版本未通过校验".into()))
+                        .map(|_| ())
+                }),
+                "请运行 cpactl install 重新激活已验证版本。",
+            );
+        }
+
+        if cfg!(target_os = "windows") {
+            push_doctor_check(
+                &mut checks,
+                "Windows 服务包装器",
+                doctor_readable_files(&[
+                    self.paths.tasks.join("run-cli-proxy-api.ps1"),
+                    self.paths.tasks.join("run-cpa-usage-keeper.ps1"),
+                ]),
+                "请以管理员身份运行 cpactl install 修复服务包装器与 ACL。",
+            );
+        }
+
+        checks.push(doctor_disk_check(&self.paths.root));
+
+        if network {
+            push_doctor_check(
+                &mut checks,
+                "GitHub 网络连接",
+                self.release_provider
+                    .latest_release(Service::Cli)
+                    .map(|_| ()),
+                "请检查网络、代理和 GitHub 认证。",
+            );
+        } else {
+            checks.push(json!({
+                "name": "GitHub 网络连接",
+                "level": "skipped",
+                "message": "未检查；使用 --network 启用。",
+                "suggestion": "cpactl doctor --network",
+            }));
+        }
+
+        Ok(Output::success_with_data(
+            "诊断完成",
+            json!({
+                "root": self.paths.root.display().to_string(),
+                "checks": checks,
             }),
         ))
     }
@@ -629,6 +748,104 @@ fn format_bytes(bytes: u64) -> String {
     } else {
         format!("{value:.2} {}", UNITS[unit])
     }
+}
+
+fn push_doctor_check(
+    checks: &mut Vec<Value>,
+    name: &str,
+    result: Result<(), AppError>,
+    suggestion: &str,
+) {
+    let (level, message) = match result {
+        Ok(()) => ("pass", "正常".to_owned()),
+        Err(error) => ("fail", error.to_string()),
+    };
+    checks.push(json!({
+        "name": name,
+        "level": level,
+        "message": message,
+        "suggestion": suggestion,
+    }));
+}
+
+fn push_doctor_warning(
+    checks: &mut Vec<Value>,
+    name: &str,
+    result: Result<(), AppError>,
+    suggestion: &str,
+) {
+    match result {
+        Ok(()) => push_doctor_check(checks, name, Ok(()), suggestion),
+        Err(error) => checks.push(json!({
+            "name": name,
+            "level": "warning",
+            "message": error.to_string(),
+            "suggestion": suggestion,
+        })),
+    }
+}
+
+fn doctor_runtime_layout(paths: &RuntimePaths) -> Result<(), AppError> {
+    let missing = [
+        &paths.root,
+        &paths.config,
+        &paths.releases,
+        &paths.current,
+        &paths.downloads,
+        &paths.logs,
+    ]
+    .into_iter()
+    .filter(|path| !path.is_dir())
+    .map(|path| path.display().to_string())
+    .collect::<Vec<_>>();
+    if missing.is_empty() {
+        Ok(())
+    } else {
+        Err(AppError::State(format!(
+            "缺少运行目录：{}",
+            missing.join("、")
+        )))
+    }
+}
+
+fn doctor_disk_check(root: &Path) -> Value {
+    let Some(path) = root.ancestors().find(|ancestor| ancestor.exists()) else {
+        return json!({
+            "name": "磁盘可用空间",
+            "level": "warning",
+            "message": "运行目录不存在，无法检查。",
+            "suggestion": "请先运行 cpactl install。",
+        });
+    };
+    match fs2::available_space(path) {
+        Ok(bytes) if bytes < 1024 * 1024 * 1024 => json!({
+            "name": "磁盘可用空间",
+            "level": "warning",
+            "message": format!("可用空间仅 {}", format_bytes(bytes)),
+            "suggestion": "请释放至少 1 GB 空间后再下载或更新。",
+        }),
+        Ok(bytes) => json!({
+            "name": "磁盘可用空间",
+            "level": "pass",
+            "message": format!("可用空间 {}", format_bytes(bytes)),
+            "suggestion": "",
+        }),
+        Err(_) => json!({
+            "name": "磁盘可用空间",
+            "level": "warning",
+            "message": "无法读取可用空间。",
+            "suggestion": "请确认运行目录所在磁盘可访问。",
+        }),
+    }
+}
+
+fn doctor_readable_files(paths: &[PathBuf]) -> Result<(), AppError> {
+    for path in paths {
+        fs::File::open(path).map_err(|error| {
+            AppError::Permission(format!("无法读取服务包装器 {}：{error}", path.display()))
+        })?;
+    }
+    Ok(())
 }
 
 #[cfg(windows)]
