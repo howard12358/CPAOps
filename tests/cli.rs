@@ -3,7 +3,7 @@ use cpactl::app::{App, LogFollower};
 use cpactl::cli::Command as CliCommand;
 use cpactl::domain::error::AppError;
 use cpactl::domain::runtime::RuntimePaths;
-use cpactl::domain::service::Service;
+use cpactl::domain::service::{Service, ServiceCatalog};
 use cpactl::platform::{Platform, ServiceStatus};
 use cpactl::storage::{config::ConfigStore, filesystem::RuntimeStore};
 use predicates::prelude::*;
@@ -357,9 +357,11 @@ fn doctor_warns_when_a_running_legacy_release_has_no_verification_marker() {
     for service in [Service::Cli, Service::Keeper] {
         let release = fixture.paths.releases.join(service.key()).join("legacy");
         fs::create_dir_all(&release).unwrap();
-        let binary = match service {
-            Service::Cli => "cli-proxy-api",
-            Service::Keeper => "cpa-usage-keeper",
+        let definition = ServiceCatalog::definition(service);
+        let binary = if cfg!(target_os = "windows") {
+            definition.windows_binary_name
+        } else {
+            definition.macos_binary_name
         };
         fs::write(release.join(binary), "legacy").unwrap();
         store.set_current(service, &release).unwrap();
