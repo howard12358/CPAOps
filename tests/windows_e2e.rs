@@ -4,6 +4,7 @@ use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Write;
 use std::path::{Path, PathBuf};
+use std::process::Command as ProcessCommand;
 use std::sync::{Arc, Mutex};
 
 use cpactl::app::{App, ReleaseProvider};
@@ -83,9 +84,10 @@ fn windows_install_update_rollback_and_uninstall_use_real_tasks_and_fixture_rele
                     .iter()
                     .all(|service| service["ok"].as_bool() == Some(true))
             }),
-        "安装结果：{}\n服务日志：{}",
+        "安装结果：{}\n服务日志：{}\n任务诊断：{}",
         installation.to_json(),
-        service_logs(&paths)
+        service_logs(&paths),
+        task_diagnostics(&paths),
     );
     assert!(
         WindowsPlatform::new(paths.clone())
@@ -206,4 +208,48 @@ fn service_logs(paths: &RuntimePaths) -> String {
         })
         .collect::<Vec<_>>()
         .join("\n")
+}
+
+fn task_diagnostics(paths: &RuntimePaths) -> String {
+    let task_state = ProcessCommand::new("powershell.exe")
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            concat!(
+                "$ErrorActionPreference = 'Continue'; ",
+                "$tasks = 'CPAStack-CLIProxyAPI', 'CPAStack-UsageKeeper'; ",
+                "foreach ($task in $tasks) { ",
+                "Write-Output \"=== $task ===\"; ",
+                "Get-ScheduledTask -TaskName $task | Format-List TaskName,State,Actions,Principal; ",
+                "Get-ScheduledTaskInfo -TaskName $task | Format-List LastRunTime,LastTaskResult,NumberOfMissedRuns,NextRunTime; ",
+                "}"
+            ),
+        ])
+        .output()
+        .map(|output| {
+            format!(
+                "{}{}",
+                String::from_utf8_lossy(&output.stdout),
+                String::from_utf8_lossy(&output.stderr)
+            )
+        })
+        .unwrap_or_else(|error| format!("无法读取任务诊断：{error}"));
+    let files = [
+        paths.tasks.join("run-cli-proxy-api.ps1"),
+        paths.tasks.join("run-cpa-usage-keeper.ps1"),
+        paths.current.join("cli-proxy-api.path"),
+        paths.current.join("cpa-usage-keeper.path"),
+    ]
+    .into_iter()
+    .map(|path| {
+        format!(
+            "{}={}",
+            path.display(),
+            fs::read_to_string(&path).unwrap_or_else(|error| format!("<无法读取：{error}>"))
+        )
+    })
+    .collect::<Vec<_>>()
+    .join("\n");
+    format!("{task_state}\n{files}")
 }
