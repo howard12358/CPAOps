@@ -1,1 +1,0 @@
-. "$PSScriptRoot\lib\Common.ps1"; . "$PSScriptRoot\lib\ScheduledTask.ps1"; foreach($s in 'cli','keeper'){Get-CPAStackServiceStatus $s | Format-List}; Get-NetTCPConnection -LocalPort 8317,18080 -State Listen -ErrorAction SilentlyContinue | Format-Table LocalAddress,LocalPort,OwningProcess

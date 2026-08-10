@@ -1,1 +1,0 @@
-param([string]$Service='all'); . "$PSScriptRoot\lib\Common.ps1"; . "$PSScriptRoot\lib\ScheduledTask.ps1"; Assert-Administrator; foreach($s in $(if($Service -eq 'all'){'cli','keeper'}else{$Service})){Stop-CPAStackService $s}
