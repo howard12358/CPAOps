@@ -108,7 +108,12 @@ impl Output {
                 };
                 let message = check.get("message").and_then(Value::as_str).unwrap_or("");
                 output.push_str(&format!("\n{level} {name}：{message}"));
-                if let Some(suggestion) = check.get("suggestion").and_then(Value::as_str) {
+                if !matches!(
+                    check.get("level").and_then(Value::as_str),
+                    Some("pass" | "skipped")
+                ) && let Some(suggestion) = check.get("suggestion").and_then(Value::as_str)
+                    && !suggestion.is_empty()
+                {
                     output.push_str(&format!("\n  建议：{suggestion}"));
                 }
             }

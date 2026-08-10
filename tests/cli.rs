@@ -5,6 +5,7 @@ use cpactl::domain::error::AppError;
 use cpactl::domain::runtime::RuntimePaths;
 use cpactl::domain::service::Service;
 use cpactl::platform::{Platform, ServiceStatus};
+use cpactl::storage::{config::ConfigStore, filesystem::RuntimeStore};
 use predicates::prelude::*;
 use serde_json::json;
 use std::fs;
@@ -320,6 +321,55 @@ fn human_doctor_output_lists_check_level_and_suggestion() {
         output.human_message(),
         "诊断完成\n失败 运行权限：需要管理员权限\n  建议：以管理员身份重新打开 PowerShell。"
     );
+}
+
+#[test]
+fn human_doctor_output_omits_suggestions_for_passing_checks() {
+    let output = cpactl::output::Output::success_with_data(
+        "诊断完成",
+        json!({
+            "checks": [{
+                "name": "平台支持",
+                "level": "pass",
+                "message": "正常",
+                "suggestion": "不应显示"
+            }]
+        }),
+    );
+
+    assert_eq!(output.human_message(), "诊断完成\n通过 平台支持：正常");
+}
+
+#[test]
+fn doctor_warns_when_a_running_legacy_release_has_no_verification_marker() {
+    let fixture = Fixture::new();
+    let store = RuntimeStore::new(fixture.paths.clone());
+    store.ensure_layout().unwrap();
+    ConfigStore::new(fixture.paths.clone())
+        .initialize("management-key", "keeper-password")
+        .unwrap();
+    for service in [Service::Cli, Service::Keeper] {
+        let release = fixture.paths.releases.join(service.key()).join("legacy");
+        fs::create_dir_all(&release).unwrap();
+        let binary = match service {
+            Service::Cli => "cli-proxy-api",
+            Service::Keeper => "cpa-usage-keeper",
+        };
+        fs::write(release.join(binary), "legacy").unwrap();
+        store.set_current(service, &release).unwrap();
+    }
+
+    let output = fixture
+        .app()
+        .run(&CliCommand::Doctor { network: false })
+        .unwrap();
+    let checks = output.data["checks"].as_array().unwrap();
+    let cli_version = checks
+        .iter()
+        .find(|check| check["name"] == "cli-proxy-api 当前版本")
+        .unwrap();
+    assert_eq!(cli_version["level"], "warning");
+    assert_eq!(cli_version["message"], "旧安装版本未记录校验状态");
 }
 
 #[test]

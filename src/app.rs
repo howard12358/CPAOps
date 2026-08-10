@@ -240,19 +240,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
                 }),
                 "请运行 cpactl install 注册服务。",
             );
-            push_doctor_check(
-                &mut checks,
-                &format!("{} 当前版本", service.key()),
-                self.current_version(service).and_then(|version| {
-                    let version =
-                        version.ok_or_else(|| AppError::State("当前版本链接不存在".into()))?;
-                    ReleaseTransaction::new(self.paths.clone())
-                        .verified_release(service, &version)?
-                        .ok_or_else(|| AppError::State("当前版本未通过校验".into()))
-                        .map(|_| ())
-                }),
-                "请运行 cpactl install 重新激活已验证版本。",
-            );
+            self.push_doctor_version_check(&mut checks, service)?;
         }
 
         if cfg!(target_os = "windows") {
@@ -294,6 +282,63 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
                 "checks": checks,
             }),
         ))
+    }
+
+    fn push_doctor_version_check(
+        &self,
+        checks: &mut Vec<Value>,
+        service: Service,
+    ) -> Result<(), AppError> {
+        let name = format!("{} 当前版本", service.key());
+        let store = RuntimeStore::new(self.paths.clone());
+        let target = store
+            .current_target(service)?
+            .ok_or_else(|| AppError::State("当前版本链接不存在".into()));
+        let target = match target {
+            Ok(target) => target,
+            Err(error) => {
+                push_doctor_check(
+                    checks,
+                    &name,
+                    Err(error),
+                    "请运行 cpactl install 重新激活已验证版本。",
+                );
+                return Ok(());
+            }
+        };
+        let definition = ServiceCatalog::definition(service);
+        let binary = if cfg!(target_os = "windows") {
+            definition.windows_binary_name
+        } else {
+            definition.macos_binary_name
+        };
+        if !target.join(binary).is_file() {
+            push_doctor_check(
+                checks,
+                &name,
+                Err(AppError::State("当前版本缺少服务二进制".into())),
+                "请运行 cpactl install 重新激活已验证版本。",
+            );
+        } else if ReleaseTransaction::new(self.paths.clone())
+            .verified_release(
+                service,
+                target
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or_default(),
+            )?
+            .is_some()
+        {
+            push_doctor_check(checks, &name, Ok(()), "");
+        } else {
+            checks.push(json!({
+                "name": name,
+                "level": "warning",
+                "message": "旧安装版本未记录校验状态",
+                "suggestion": "下次运行 cpactl update 或 cpactl install 后将建立校验记录。",
+            }));
+        }
+        Ok(())
     }
 
     fn install(&self) -> Result<Output, AppError> {
