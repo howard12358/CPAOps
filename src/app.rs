@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use serde_json::{Value, json};
 
-use crate::cli::{Command, ProxyAction};
+use crate::cli::{CacheAction, Command, ProxyAction};
 use crate::domain::error::AppError;
 use crate::domain::release::{
     ReleaseMetadata, ReleasePlan, ReleasePlatform, ReleaseTransaction, ServiceLifecycle,
@@ -147,6 +147,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             Command::Stop { service } => self.stop(service.as_deref()),
             Command::Restart { service } => self.restart(service.as_deref()),
             Command::Proxy { action } => self.proxy(action),
+            Command::Cache { action } => self.cache(action),
             Command::Auth { .. } => Err(AppError::Internal("认证命令必须由 CLI 入口处理".into())),
             Command::Uninstall { purge } => self.uninstall(*purge),
         };
@@ -435,6 +436,47 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         }))
     }
 
+    fn cache(&self, action: &CacheAction) -> Result<Output, AppError> {
+        match action {
+            CacheAction::Clean { dry_run } => {
+                self.require_installed()?;
+                let result = RuntimeStore::new(self.paths.clone()).clean_download_cache(
+                    *dry_run,
+                    |current| {
+                        if !dry_run {
+                            self.progress.stage(&format!(
+                                "正在清理下载缓存：已删除 {} 项，释放 {}",
+                                current.removed_entries,
+                                format_bytes(current.freed_bytes)
+                            ));
+                        }
+                    },
+                )?;
+                Ok(Output::success_with_data(
+                    if *dry_run {
+                        format!(
+                            "下载缓存可清理：{} 项，预计释放 {}",
+                            result.removed_entries,
+                            format_bytes(result.freed_bytes)
+                        )
+                    } else {
+                        format!(
+                            "已清理下载缓存：{} 项，释放 {}",
+                            result.removed_entries,
+                            format_bytes(result.freed_bytes)
+                        )
+                    },
+                    json!({
+                        "path": self.paths.downloads.display().to_string(),
+                        "removed_entries": result.removed_entries,
+                        "freed_bytes": result.freed_bytes,
+                        "dry_run": dry_run,
+                    }),
+                ))
+            }
+        }
+    }
+
     fn require_installed(&self) -> Result<(), AppError> {
         if self.paths.root.is_dir() {
             Ok(())
@@ -572,6 +614,21 @@ fn release_asset_name(name: &str) -> Result<&str, AppError> {
 fn shell_change_directory(path: &Path) -> String {
     let path = path.display().to_string().replace('\'', "'\"'\"'");
     format!("cd -- '{path}'")
+}
+
+fn format_bytes(bytes: u64) -> String {
+    const UNITS: [&str; 5] = ["B", "KB", "MB", "GB", "TB"];
+    let mut value = bytes as f64;
+    let mut unit = 0;
+    while value >= 1024.0 && unit < UNITS.len() - 1 {
+        value /= 1024.0;
+        unit += 1;
+    }
+    if unit == 0 {
+        format!("{bytes} B")
+    } else {
+        format!("{value:.2} {}", UNITS[unit])
+    }
 }
 
 #[cfg(windows)]

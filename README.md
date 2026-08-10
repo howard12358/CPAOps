@@ -59,12 +59,16 @@ cpactl rollback keeper --version v1.14.3
 cpactl upgrade                         # 更新 cpactl 自身
 cpactl proxy set                      # 保存下载代理
 cpactl proxy show
+cpactl cache clean                    # 清理可重新下载的缓存
+cpactl cache clean --dry-run          # 预览可释放空间，不删除文件
 cpactl path --open                    # 在 Finder / Explorer 打开运行目录
 cpactl path --shell                   # 输出可直接粘贴的 cd 命令
 cpactl -V                             # 版本、提交和构建时间
 ```
 
 `install`、`update` 和 `upgrade` 在交互式终端中显示下载进度；`--json`、管道和重定向输出不会包含动画控制字符。
+
+`cache clean` 只删除 `downloads/` 中的下载包、校验文件和 Release 元数据；不会触碰配置、授权、Keeper 数据库、历史 Release 或日志。在交互式终端中，它会显示已删除项目数和已释放空间。
 
 ## 运行目录与卸载
 

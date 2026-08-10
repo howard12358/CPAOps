@@ -1,9 +1,10 @@
-use std::path::PathBuf;
+use std::{fs, path::PathBuf};
 
 use cpactl::domain::{
     runtime::RuntimePaths,
     service::{Service, ServiceCatalog},
 };
+use cpactl::storage::filesystem::RuntimeStore;
 
 #[test]
 fn cli_aliases_resolve_to_one_catalog_entry() {
@@ -20,4 +21,35 @@ fn explicit_root_beats_environment_root() {
         let paths = RuntimePaths::resolve(Some(PathBuf::from("/from-cli"))).unwrap();
         assert_eq!(paths.root, PathBuf::from("/from-cli"));
     });
+}
+
+#[test]
+fn cache_clean_removes_only_downloads_and_dry_run_keeps_files() {
+    let temporary = tempfile::tempdir().unwrap();
+    let paths = RuntimePaths::from_root(temporary.path().join("runtime")).unwrap();
+    let store = RuntimeStore::new(paths.clone());
+    store.ensure_layout().unwrap();
+    fs::write(paths.downloads.join("archive.tar.gz"), b"archive").unwrap();
+    fs::create_dir_all(paths.downloads.join("cli").join("v1")).unwrap();
+    fs::write(
+        paths.downloads.join("cli").join("v1").join("checksums.txt"),
+        b"sum",
+    )
+    .unwrap();
+    fs::write(paths.config.join("config.yaml"), b"must remain").unwrap();
+
+    let dry_run = store.clean_download_cache(true, |_| {}).unwrap();
+
+    assert_eq!(dry_run.freed_bytes, 10);
+    assert!(paths.downloads.join("archive.tar.gz").exists());
+
+    let cleaned = store.clean_download_cache(false, |_| {}).unwrap();
+
+    assert_eq!(cleaned.freed_bytes, 10);
+    assert!(paths.downloads.is_dir());
+    assert!(fs::read_dir(&paths.downloads).unwrap().next().is_none());
+    assert_eq!(
+        fs::read(paths.config.join("config.yaml")).unwrap(),
+        b"must remain"
+    );
 }

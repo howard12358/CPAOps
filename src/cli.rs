@@ -61,6 +61,11 @@ pub enum Command {
         #[command(subcommand)]
         action: AuthAction,
     },
+    #[command(about = "管理可安全重新下载的缓存")]
+    Cache {
+        #[command(subcommand)]
+        action: CacheAction,
+    },
     #[command(about = "输出运行目录；--open 打开目录，--shell 输出可粘贴的跳转命令")]
     Path {
         #[arg(long, conflicts_with = "shell")]
@@ -93,4 +98,13 @@ pub enum AuthAction {
     Status,
     #[command(about = "清除本地 GitHub 认证")]
     Logout,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum CacheAction {
+    #[command(about = "清理下载缓存；--dry-run 仅显示可清理内容")]
+    Clean {
+        #[arg(long)]
+        dry_run: bool,
+    },
 }

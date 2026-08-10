@@ -34,6 +34,33 @@ fn invalid_command_uses_usage_exit_code() {
 }
 
 #[test]
+fn cache_clean_json_removes_downloads_without_touching_config() {
+    let root = TempDir::new().unwrap();
+    let downloads = root.path().join("downloads");
+    let config = root.path().join("config");
+    fs::create_dir_all(&downloads).unwrap();
+    fs::create_dir_all(&config).unwrap();
+    fs::write(downloads.join("archive.tar.gz"), b"cache").unwrap();
+    fs::write(config.join("config.yaml"), b"config").unwrap();
+
+    Command::cargo_bin("cpactl")
+        .unwrap()
+        .args([
+            "--root",
+            root.path().to_str().unwrap(),
+            "--json",
+            "cache",
+            "clean",
+        ])
+        .assert()
+        .success()
+        .stdout(predicate::str::contains("\"freed_bytes\":5"));
+
+    assert!(!downloads.join("archive.tar.gz").exists());
+    assert_eq!(fs::read(config.join("config.yaml")).unwrap(), b"config");
+}
+
+#[test]
 fn version_output_uses_compact_release_style_without_binary_hash() {
     Command::cargo_bin("cpactl")
         .unwrap()
@@ -87,6 +114,7 @@ fn help_lists_each_command_with_its_chinese_purpose() {
     assert!(commands.contains("install    安装或修复服务"));
     assert!(commands.contains("update     查询并更新到 GitHub 最新 Release"));
     assert!(commands.contains("auth       登录、查看或退出 GitHub 认证"));
+    assert!(commands.contains("cache      管理可安全重新下载的缓存"));
 }
 
 #[test]
