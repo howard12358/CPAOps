@@ -4,6 +4,11 @@
 
 支持 macOS Apple Silicon 和 Windows x64。
 
+## 管理的服务
+
+- [CLIProxyAPI](https://github.com/router-for-me/CLIProxyAPI)：CPA 代理服务。
+- [cpa-usage-keeper](https://github.com/Willxup/cpa-usage-keeper)：用量采集与管理服务。
+
 ## 安装 cpactl
 
 macOS：
@@ -49,8 +54,8 @@ cpactl auth logout
 ```sh
 cpactl status                         # 查看服务、端口和版本
 cpactl status --json                  # 输出 JSON
-cpactl doctor                         # 只读诊断本机环境
-cpactl doctor --network               # 额外检查 GitHub、认证与代理链路
+cpactl doctor                         # 只读诊断本机环境与 GitHub 连通性
+cpactl doctor --offline               # 跳过 GitHub 网络检查
 cpactl start [cli|keeper]             # 启动一个或全部服务
 cpactl stop [cli|keeper]              # 停止服务并阻止自动拉起
 cpactl restart [cli|keeper]           # 重启服务
@@ -72,7 +77,7 @@ cpactl -V                             # 版本、提交和构建时间
 
 `cache clean` 只删除 `downloads/` 中的下载包、校验文件和 Release 元数据；不会触碰配置、授权、Keeper 数据库、历史 Release 或日志。在交互式终端中，它会显示已删除项目数和已释放空间。
 
-`doctor` 不会修改服务、配置、权限或网络设置。它检查运行目录、配置、权限、服务注册与端口、当前版本校验、GitHub 认证/代理和磁盘空间；`--network` 才会发送 GitHub 请求。
+`doctor` 不会修改服务、配置、权限或网络设置。它默认检查运行目录、配置、权限、服务注册与端口、当前版本校验、GitHub 认证/代理、磁盘空间与 GitHub 连通性；使用 `--offline` 跳过网络请求。
 
 ## 运行目录与卸载
 
