@@ -241,6 +241,10 @@ where
 
 fn remove_path_if_exists(path: &Path) -> Result<(), AppError> {
     match fs::symlink_metadata(path) {
+        #[cfg(windows)]
+        Ok(metadata) if metadata.file_type().is_dir() => fs::remove_dir(path)
+            .map_err(|error| AppError::Permission(format!("无法移除旧版本链接：{error}"))),
+        #[cfg(not(windows))]
         Ok(metadata) if metadata.file_type().is_dir() => fs::remove_dir_all(path)
             .map_err(|error| AppError::Permission(format!("无法移除旧版本链接：{error}"))),
         Ok(_) => fs::remove_file(path)
