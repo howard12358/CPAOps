@@ -1,81 +1,92 @@
-# CPA Stack 本地部署
+# CPA Stack CLI
 
-`cpactl` 是 CPA（CLIProxyAPI）和 cpa-usage-keeper 的跨平台运维工具。它从官方 GitHub Release 下载对应平台资产，校验 SHA-256 后原子激活版本；升级失败时自动恢复该服务原有版本和运行状态。
+`cpactl` 是 CPA（CLIProxyAPI）和 cpa-usage-keeper 的跨平台运维命令行工具。它从 GitHub Release 下载对应平台资产，校验 SHA-256、原子激活版本，并在更新失败时恢复受影响服务的原版本和运行状态。
 
-支持 macOS Apple Silicon（当前用户 LaunchAgent）和 Windows x64（SYSTEM 计划任务）。完整命令、权限、迁移与故障处理见 [cpactl 使用说明](docs/cpactl.md)。
+支持 macOS Apple Silicon 和 Windows x64。
 
-## 快速开始
+## 安装 cpactl
 
-macOS Apple Silicon 可直接安装正式 Release：
+macOS：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/howard12358/CPAOps/v0.1.0/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/howard12358/CPAOps/main/scripts/install.sh | bash
 ```
 
-安装脚本会校验发布资产的 SHA-256，并安装用户级全局命令 `cpactl`。它会自动继承 `http_proxy`、`https_proxy`、`all_proxy` 环境变量。Windows 请使用 PowerShell：
+Windows（以管理员身份打开 PowerShell）：
 
 ```powershell
-irm https://raw.githubusercontent.com/howard12358/CPAOps/v0.1.0/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/howard12358/CPAOps/main/scripts/install.ps1 | iex
 ```
 
-然后在首次安装前提供两个私密配置值：
+安装脚本会校验下载文件，并将 `cpactl` 加入当前用户的全局命令路径。支持常见代理环境变量，例如：
 
 ```sh
-export CPA_MANAGEMENT_KEY='请使用自己的管理密钥'
-export KEEPER_LOGIN_PASSWORD='请使用自己的 Keeper 登录密码'
+export https_proxy=http://127.0.0.1:7897
+export http_proxy=http://127.0.0.1:7897
+export all_proxy=socks5://127.0.0.1:7897
+```
+
+Windows PowerShell 也可以直接粘贴代理软件导出的 `$env:HTTP_PROXY=...` 形式。
+
+## 首次安装服务
+
+```sh
 cpactl install
-cpactl status
 ```
 
-在交互式终端运行 `cpactl install` 时也会隐藏输入这两个值。Windows 必须在提升权限的管理员 PowerShell 中运行；macOS 不需要 `sudo`。
+首次执行会提示输入 CPA 管理密钥和 Keeper 登录密码；未保存下载代理时，也会询问是否配置。Windows 必须使用提升权限的管理员 PowerShell。
 
-日常命令示例：
+GitHub 下载因 401 或 403 被拒绝时，使用浏览器完成认证：
 
 ```sh
-cpactl status --json
-cpactl logs cli -f
-cpactl update
-cpactl rollback keeper --version v1.2.3
-cpactl proxy set                 # 从 HTTP_PROXY/HTTPS_PROXY/ALL_PROXY 保存代理
-cpactl uninstall                 # 保留运行数据
-cpactl upgrade                   # 更新 cpactl 自身
+cpactl auth login
+cpactl auth status
+cpactl auth logout
 ```
 
-默认运行目录为 macOS 的 `~/Library/Application Support/cpa-stack` 和 Windows 的 `C:\ProgramData\CPAStack`。可用 `--root <path>` 或 `CPA_STACK_ROOT` 覆盖，前者优先。
+## 常用命令
 
-## 安全与更新
+```sh
+cpactl status                         # 查看服务、端口和版本
+cpactl status --json                  # 输出 JSON
+cpactl start [cli|keeper]             # 启动一个或全部服务
+cpactl stop [cli|keeper]              # 停止服务并阻止自动拉起
+cpactl restart [cli|keeper]           # 重启服务
+cpactl logs cli -f                    # 跟随 CLIProxyAPI 日志
+cpactl logs keeper -n 200             # 查看 Keeper 最后 200 行日志
+cpactl update [cli|keeper]            # 更新服务 Release
+cpactl rollback keeper --version v1.14.3
+cpactl upgrade                         # 更新 cpactl 自身
+cpactl proxy set                      # 保存下载代理
+cpactl proxy show
+cpactl path --open                    # 在 Finder / Explorer 打开运行目录
+cpactl path --shell                   # 输出可直接粘贴的 cd 命令
+cpactl -V                             # 版本、提交和构建时间
+```
 
-`cpactl` 只激活带有 `.verified` 标记的本地版本：发布资产和 `checksums.txt` 必须精确匹配，二进制须可通过启动验证。更新全部服务时逐项处理；一个服务失败只回退该服务，不会降级已经更新成功的其他服务。Keeper 更新前会备份 SQLite 数据库及 WAL/SHM 文件。
+`install`、`update` 和 `upgrade` 在交互式终端中显示下载进度；`--json`、管道和重定向输出不会包含动画控制字符。
 
-配置、认证、Token、代理、数据库、下载与日志都保存在私有运行目录中，不会写入仓库，也不会出现在 JSON 或错误输出中。
+## 运行目录与卸载
 
-## 旧脚本兼容层
+默认运行目录：
 
-`macos/` 下的 Shell 脚本与 `windows/` 下的 PowerShell 脚本目前仍保留，作为真实机器验收完成前的兼容层。新部署和日常操作请使用 `cpactl`；旧脚本不再是新增功能的接口。
+- macOS：`~/Library/Application Support/cpa-stack`
+- Windows：`C:\ProgramData\CPAStack`
 
-## 开发验证
+可通过 `--root <path>` 或 `CPA_STACK_ROOT` 覆盖，`--root` 优先。测试时请使用单独的临时根目录，避免影响正在使用的服务和数据。
+
+```sh
+cpactl uninstall          # 移除服务定义，保留运行数据
+cpactl uninstall --purge  # 输入 DELETE 后删除整个运行目录
+```
+
+`--purge` 会删除服务配置、授权文件、Keeper 数据库、Release、日志和下载缓存。Windows 的 GitHub Token 与代理位于 `%LOCALAPPDATA%\CPAStack\config`，不会被该命令删除；macOS 默认位置与运行目录相同，因此会一并删除。
+
+## 开发
 
 ```sh
 cargo fmt --check
 cargo clippy --all-targets -- -D warnings
 cargo test
-sh tests/run.sh
+cargo build --release
 ```
-
-## 实机冒烟与 CI
-
-在没有注册 CPA Stack 服务的测试机器上，可执行不下载 Release、不启动第三方服务的冒烟检查：
-
-```sh
-sh tests/smoke/macos.sh
-```
-
-Windows 请在提升权限的管理员 PowerShell 中执行：
-
-```powershell
-./tests/smoke/windows.ps1
-```
-
-两个脚本均使用临时 `--root`；通过保留的本地 TCP 0 端口代理让安装在配置初始化后停止，并检查路径、代理脱敏、状态 JSON、停止标记、日志读取和非交互 `--purge` 拒绝。它们使用调试构建专用的系统命令隔离开关，因此不会查询或操作本机 8317/18080 端口、服务注册或默认运行目录；发布构建不会启用该开关。
-
-GitHub Actions 在 macOS Apple Silicon 和 Windows x64 上分别运行 `cargo fmt --check`、`cargo clippy --all-targets -- -D warnings` 与 `cargo test`。
