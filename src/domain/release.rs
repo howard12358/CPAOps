@@ -267,20 +267,18 @@ impl ReleaseTransaction {
         if service == Service::Keeper {
             self.store.backup_keeper_database()?;
         }
-        lifecycle.replace_current(service, &target)?;
-
-        let activation_result = if was_running {
-            lifecycle.restart(service)
-        } else {
-            lifecycle.start(service)
-        }
-        .and_then(|()| {
+        let activation_result = (|| {
+            if was_running {
+                lifecycle.stop(service)?;
+            }
+            lifecycle.replace_current(service, &target)?;
+            lifecycle.start(service)?;
             if lifecycle.wait_for_healthy(service)? {
                 Ok(())
             } else {
                 Err(AppError::Service("新版本健康检查失败".into()))
             }
-        });
+        })();
         if let Err(error) = activation_result {
             return match self.rollback(service, previous_target.as_deref(), was_running, lifecycle)
             {
@@ -300,16 +298,16 @@ impl ReleaseTransaction {
         was_running: bool,
         lifecycle: &mut L,
     ) -> Result<(), AppError> {
+        lifecycle.stop(service)?;
         if let Some(previous_target) = previous_target {
             lifecycle.replace_current(service, previous_target)?;
+            if was_running {
+                lifecycle.start(service)
+            } else {
+                Ok(())
+            }
         } else {
-            lifecycle.clear_current(service)?;
-        }
-
-        if was_running {
-            lifecycle.restart(service)
-        } else {
-            lifecycle.stop(service)
+            lifecycle.clear_current(service)
         }
     }
 

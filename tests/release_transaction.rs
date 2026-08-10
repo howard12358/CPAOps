@@ -89,6 +89,7 @@ struct FakeLifecycle {
     running: bool,
     healthy: bool,
     paths: RuntimePaths,
+    events: Vec<&'static str>,
 }
 
 impl ServiceLifecycle for FakeLifecycle {
@@ -97,16 +98,19 @@ impl ServiceLifecycle for FakeLifecycle {
     }
 
     fn start(&mut self, _: Service) -> Result<(), cpactl::domain::error::AppError> {
+        self.events.push("start");
         self.running = true;
         Ok(())
     }
 
     fn stop(&mut self, _: Service) -> Result<(), cpactl::domain::error::AppError> {
+        self.events.push("stop");
         self.running = false;
         Ok(())
     }
 
     fn restart(&mut self, _: Service) -> Result<(), cpactl::domain::error::AppError> {
+        self.events.push("restart");
         self.running = true;
         Ok(())
     }
@@ -127,10 +131,12 @@ impl ServiceLifecycle for FakeLifecycle {
         service: Service,
         release: &Path,
     ) -> Result<(), cpactl::domain::error::AppError> {
+        self.events.push("replace");
         RuntimeStore::new(self.paths.clone()).set_current(service, release)
     }
 
     fn clear_current(&mut self, service: Service) -> Result<(), cpactl::domain::error::AppError> {
+        self.events.push("clear");
         RuntimeStore::new(self.paths.clone()).clear_current(service)
     }
 }
@@ -188,6 +194,7 @@ fn failed_health_check_restores_previous_release_and_running_state() {
         running: true,
         healthy: false,
         paths: store.paths().clone(),
+        events: Vec::new(),
     };
 
     assert!(
@@ -200,6 +207,10 @@ fn failed_health_check_restores_previous_release_and_running_state() {
         old.canonicalize().unwrap()
     );
     assert!(lifecycle.running);
+    assert_eq!(
+        lifecycle.events,
+        vec!["stop", "replace", "start", "stop", "replace", "start"]
+    );
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -216,6 +227,7 @@ fn activating_keeper_copies_database_wal_and_shm_to_one_backup() {
         running: false,
         healthy: true,
         paths: store.paths().clone(),
+        events: Vec::new(),
     };
 
     transaction
