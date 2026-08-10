@@ -95,7 +95,13 @@ fn doctor_json_reports_checks_without_exposing_config_secrets() {
 
     Command::cargo_bin("cpactl")
         .unwrap()
-        .args(["--root", root.path().to_str().unwrap(), "--json", "doctor"])
+        .args([
+            "--root",
+            root.path().to_str().unwrap(),
+            "--json",
+            "doctor",
+            "--offline",
+        ])
         .assert()
         .success()
         .stdout(predicate::str::contains("\"checks\""))
@@ -361,7 +367,7 @@ fn doctor_warns_when_a_running_legacy_release_has_no_verification_marker() {
 
     let output = fixture
         .app()
-        .run(&CliCommand::Doctor { network: false })
+        .run(&CliCommand::Doctor { offline: true })
         .unwrap();
     let checks = output.data["checks"].as_array().unwrap();
     let cli_version = checks

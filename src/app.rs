@@ -140,7 +140,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
                 json!({ "root": self.paths.root.display().to_string() }),
             )),
             Command::Status => self.status(),
-            Command::Doctor { network } => self.doctor(*network),
+            Command::Doctor { offline } => self.doctor(!offline),
             Command::Logs { service, lines, .. } => {
                 self.logs(ServiceCatalog::resolve(service)?, *lines)
             }
@@ -270,8 +270,8 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
             checks.push(json!({
                 "name": "GitHub 网络连接",
                 "level": "skipped",
-                "message": "未检查；使用 --network 启用。",
-                "suggestion": "cpactl doctor --network",
+                "message": "未检查；使用不带 --offline 的 doctor 启用。",
+                "suggestion": "cpactl doctor",
             }));
         }
 

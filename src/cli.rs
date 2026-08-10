@@ -32,10 +32,10 @@ pub enum Command {
     Restart { service: Option<String> },
     #[command(about = "查看注册、监听端口和当前版本")]
     Status,
-    #[command(about = "诊断本机运行环境；--network 额外检查 GitHub 连通性")]
+    #[command(about = "诊断本机运行环境和 GitHub 连通性；--offline 跳过网络检查")]
     Doctor {
         #[arg(long)]
-        network: bool,
+        offline: bool,
     },
     #[command(about = "查看或跟随服务日志")]
     Logs {
