@@ -180,12 +180,14 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
 
     fn doctor(&self, network: bool) -> Result<Output, AppError> {
         let mut checks = Vec::new();
+        self.progress.stage("检查平台与运行权限");
         push_doctor_check(
             &mut checks,
             "平台支持",
             self.platform.check_supported(),
             "请使用 macOS Apple Silicon 或 Windows x64。",
         );
+        self.progress.stage("检查运行目录与服务配置");
         push_doctor_check(
             &mut checks,
             "运行权限",
@@ -206,6 +208,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         );
 
         let settings = GithubTokenStore::default_location();
+        self.progress.stage("检查 GitHub 认证与代理");
         push_doctor_warning(
             &mut checks,
             "GitHub 认证",
@@ -226,6 +229,8 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         );
 
         for service in [Service::Cli, Service::Keeper] {
+            self.progress
+                .stage(&format!("检查 {} 服务状态", service.key()));
             push_doctor_check(
                 &mut checks,
                 &format!("{} 服务状态", service.key()),
@@ -258,6 +263,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         checks.push(doctor_disk_check(&self.paths.root));
 
         if network {
+            self.progress.stage("连接 GitHub 检查网络");
             push_doctor_check(
                 &mut checks,
                 "GitHub 网络连接",
@@ -274,6 +280,8 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
                 "suggestion": "cpactl doctor",
             }));
         }
+
+        self.progress.clear();
 
         Ok(Output::success_with_data(
             "诊断完成",
