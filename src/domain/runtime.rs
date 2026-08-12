@@ -50,16 +50,29 @@ impl RuntimePaths {
 }
 
 fn default_root() -> PathBuf {
-    if cfg!(target_os = "windows") {
-        env::var_os("ProgramData")
+    default_root_for(
+        env::consts::OS,
+        env::var_os("HOME"),
+        env::var_os("ProgramData"),
+    )
+}
+
+fn default_root_for(
+    os: &str,
+    home: Option<std::ffi::OsString>,
+    program_data: Option<std::ffi::OsString>,
+) -> PathBuf {
+    match os {
+        "windows" => program_data
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from(r"C:\\ProgramData"))
-            .join("CPAStack")
-    } else {
-        env::var_os("HOME")
+            .join("CPAStack"),
+        "macos" => home
             .map(PathBuf::from)
             .unwrap_or_else(|| PathBuf::from("."))
-            .join("Library/Application Support/cpa-stack")
+            .join("Library/Application Support/cpa-stack"),
+        "linux" => PathBuf::from("/var/lib/cpa-stack"),
+        _ => PathBuf::from(".").join("cpa-stack"),
     }
 }
 
@@ -71,4 +84,17 @@ fn validate_root(root: &Path) -> Result<(), AppError> {
         return Err(AppError::Usage("运行根目录不能是文件".into()));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn linux_default_root_is_system_level() {
+        assert_eq!(
+            default_root_for("linux", None, None),
+            PathBuf::from("/var/lib/cpa-stack")
+        );
+    }
 }

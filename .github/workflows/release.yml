@@ -19,6 +19,9 @@ jobs:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             asset: "cpactl-${{ github.ref_name }}-windows-amd64.zip"
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: "cpactl-${{ github.ref_name }}-linux-amd64.tar.gz"
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
@@ -26,7 +29,7 @@ jobs:
         with:
           targets: ${{ matrix.target }}
       - run: cargo build --release --target ${{ matrix.target }}
-      - if: runner.os == 'macOS'
+      - if: runner.os != 'Windows'
         run: tar -C target/${{ matrix.target }}/release -czf ${{ matrix.asset }} cpactl
       - if: runner.os == 'Windows'
         shell: pwsh

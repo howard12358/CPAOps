@@ -130,7 +130,7 @@ impl<R: CommandRunner> MacosPlatform<R> {
             .paths
             .current
             .join(service.key())
-            .join(definition.macos_binary_name);
+            .join(definition.unix_binary_name);
         let config = match service {
             Service::Cli => self.paths.config.join("config.yaml"),
             Service::Keeper => self.paths.config.join("keeper.env"),

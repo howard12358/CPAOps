@@ -30,17 +30,11 @@ pub struct GithubTokenStore {
 
 impl GithubTokenStore {
     pub fn default_location() -> Self {
-        let config = if cfg!(target_os = "windows") {
-            env::var_os("LOCALAPPDATA")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from(r"C:\\Users\\Default\\AppData\\Local"))
-                .join("CPAStack/config")
-        } else {
-            env::var_os("HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("Library/Application Support/cpa-stack/config")
-        };
+        let config = github_config_directory_for(
+            env::consts::OS,
+            env::var_os("HOME"),
+            env::var_os("LOCALAPPDATA"),
+        );
         Self::at(config.join("github-token"))
     }
 
@@ -125,6 +119,38 @@ impl GithubTokenStore {
 
     fn proxy_path(&self) -> PathBuf {
         self.path.with_file_name("proxy.toml")
+    }
+}
+
+fn github_config_directory_for(
+    os: &str,
+    home: Option<std::ffi::OsString>,
+    local_app_data: Option<std::ffi::OsString>,
+) -> PathBuf {
+    match os {
+        "windows" => local_app_data
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(r"C:\\Users\\Default\\AppData\\Local"))
+            .join("CPAStack/config"),
+        "macos" => home
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("Library/Application Support/cpa-stack/config"),
+        "linux" => PathBuf::from("/var/lib/cpa-stack/config"),
+        _ => PathBuf::from(".").join("cpa-stack/config"),
+    }
+}
+
+#[cfg(test)]
+mod default_location_tests {
+    use super::*;
+
+    #[test]
+    fn linux_github_token_is_stored_under_the_system_runtime() {
+        assert_eq!(
+            github_config_directory_for("linux", None, None),
+            PathBuf::from("/var/lib/cpa-stack/config")
+        );
     }
 }
 

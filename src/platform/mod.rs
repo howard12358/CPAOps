@@ -8,9 +8,11 @@ use std::time::{Duration, Instant};
 use crate::domain::error::AppError;
 use crate::domain::service::Service;
 
+pub mod linux;
 pub mod macos;
 pub mod windows;
 
+pub use linux::LinuxPlatform;
 pub use macos::MacosPlatform;
 pub use windows::WindowsPlatform;
 
@@ -19,6 +21,8 @@ pub enum SystemPlatform {
     Macos(Box<MacosPlatform>),
     #[cfg(target_os = "windows")]
     Windows(Box<WindowsPlatform>),
+    #[cfg(target_os = "linux")]
+    Linux(Box<LinuxPlatform>),
     Unsupported,
 }
 
@@ -35,7 +39,11 @@ pub fn native_platform(
             paths,
         ))))
     }
-    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    #[cfg(target_os = "linux")]
+    {
+        LinuxPlatform::new(paths).map(|platform| SystemPlatform::Linux(Box::new(platform)))
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "linux")))]
     {
         let _ = paths;
         Ok(SystemPlatform::Unsupported)
@@ -143,6 +151,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.check_supported(),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.check_supported(),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.check_supported(),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }
@@ -153,6 +163,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.check_permissions(),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.check_permissions(),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.check_permissions(),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }
@@ -163,6 +175,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.install_services(),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.install_services(),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.install_services(),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }
@@ -173,6 +187,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.remove_services(),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.remove_services(),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.remove_services(),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }
@@ -183,6 +199,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.start(service),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.start(service),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.start(service),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }
@@ -193,6 +211,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.stop(service),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.stop(service),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.stop(service),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }
@@ -203,6 +223,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.restart(service),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.restart(service),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.restart(service),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }
@@ -213,6 +235,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.status(service),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.status(service),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.status(service),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }
@@ -223,6 +247,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.statuses(),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.statuses(),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.statuses(),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }
@@ -233,6 +259,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.replace_current_link(service, release),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.replace_current_link(service, release),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.replace_current_link(service, release),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }
@@ -243,6 +271,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.is_port_listening(service),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.is_port_listening(service),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.is_port_listening(service),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }
@@ -253,6 +283,8 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.configure_firewall(),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.configure_firewall(),
+            #[cfg(target_os = "linux")]
+            Self::Linux(platform) => platform.configure_firewall(),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }

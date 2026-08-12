@@ -73,12 +73,15 @@ fn run_inner(
 }
 
 fn asset_name(tag: &str) -> String {
-    if cfg!(target_os = "macos") && cfg!(target_arch = "aarch64") {
-        format!("cpactl-{tag}-darwin-arm64.tar.gz")
-    } else if cfg!(target_os = "windows") && cfg!(target_arch = "x86_64") {
-        format!("cpactl-{tag}-windows-amd64.zip")
-    } else {
-        String::new()
+    asset_name_for(tag, std::env::consts::OS, std::env::consts::ARCH).unwrap_or_default()
+}
+
+fn asset_name_for(tag: &str, os: &str, arch: &str) -> Option<String> {
+    match (os, arch) {
+        ("macos", "aarch64") => Some(format!("cpactl-{tag}-darwin-arm64.tar.gz")),
+        ("windows", "x86_64") => Some(format!("cpactl-{tag}-windows-amd64.zip")),
+        ("linux", "x86_64") => Some(format!("cpactl-{tag}-linux-amd64.tar.gz")),
+        _ => None,
     }
 }
 
@@ -119,10 +122,20 @@ fn replace_current_binary(replacement: &Path) -> Result<(), AppError> {
     let current =
         std::env::current_exe().map_err(|_| AppError::State("无法确定当前 cpactl 路径".into()))?;
     let next = current.with_extension("new");
-    fs::copy(replacement, &next).map_err(|_| AppError::Permission("无法写入新版 cpactl".into()))?;
+    fs::copy(replacement, &next)
+        .map_err(|_| AppError::Permission(unix_upgrade_permission_message()))?;
     fs::set_permissions(&next, fs::Permissions::from_mode(0o755))
         .map_err(|_| AppError::Permission("无法设置新版 cpactl 权限".into()))?;
-    fs::rename(next, current).map_err(|_| AppError::Permission("无法替换 cpactl".into()))
+    fs::rename(next, current).map_err(|_| AppError::Permission(unix_upgrade_permission_message()))
+}
+
+#[cfg(unix)]
+fn unix_upgrade_permission_message() -> String {
+    if cfg!(target_os = "linux") {
+        "无法更新 /usr/local/bin/cpactl，请使用 sudo cpactl upgrade".into()
+    } else {
+        "无法写入或替换 cpactl".into()
+    }
 }
 
 #[cfg(windows)]
@@ -155,6 +168,16 @@ fn replace_current_binary(_: &Path) -> Result<(), AppError> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn asset_name_uses_the_linux_release_convention() {
+        use super::asset_name_for;
+
+        assert_eq!(
+            asset_name_for("v0.1.0", "linux", "x86_64").as_deref(),
+            Some("cpactl-v0.1.0-linux-amd64.tar.gz")
+        );
+    }
+
     #[cfg(all(target_os = "macos", target_arch = "aarch64"))]
     #[test]
     fn asset_name_uses_the_macos_release_convention() {

@@ -361,7 +361,7 @@ fn doctor_warns_when_a_running_legacy_release_has_no_verification_marker() {
         let binary = if cfg!(target_os = "windows") {
             definition.windows_binary_name
         } else {
-            definition.macos_binary_name
+            definition.unix_binary_name
         };
         fs::write(release.join(binary), "legacy").unwrap();
         store.set_current(service, &release).unwrap();

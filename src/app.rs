@@ -319,7 +319,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         let binary = if cfg!(target_os = "windows") {
             definition.windows_binary_name
         } else {
-            definition.macos_binary_name
+            definition.unix_binary_name
         };
         if !target.join(binary).is_file() {
             push_doctor_check(

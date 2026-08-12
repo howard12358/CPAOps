@@ -9,7 +9,9 @@ use cpactl::domain::runtime::RuntimePaths;
 use cpactl::domain::service::Service;
 #[cfg(debug_assertions)]
 use cpactl::platform::ProcessCommandRunner;
-use cpactl::platform::{CommandOutput, CommandRunner, MacosPlatform, Platform, WindowsPlatform};
+use cpactl::platform::{
+    CommandOutput, CommandRunner, LinuxPlatform, MacosPlatform, Platform, WindowsPlatform,
+};
 use tempfile::TempDir;
 
 #[derive(Clone, Default)]
@@ -380,6 +382,157 @@ fn macos_port_health_uses_lsof_with_the_service_port_as_an_argument() {
             "-sTCP:LISTEN".to_owned(),
         ]]
     );
+}
+
+#[test]
+fn linux_install_writes_systemd_units_and_enables_both_services() {
+    let temp_dir = TempDir::new().unwrap();
+    let paths = paths(&temp_dir);
+    let runner = RecordingRunner::default();
+    let platform = LinuxPlatform::with_runner(runner.clone(), paths.clone());
+
+    platform.install_services().unwrap();
+
+    let cli_unit = std::fs::read_to_string(platform.unit_path(Service::Cli)).unwrap();
+    assert!(cli_unit.contains("WantedBy=multi-user.target"));
+    assert!(cli_unit.contains("Restart=on-failure"));
+    assert!(cli_unit.contains("run-cli-proxy-api"));
+    assert_eq!(
+        runner.calls(),
+        vec![
+            vec!["systemctl".to_owned(), "daemon-reload".to_owned()],
+            vec![
+                "systemctl".to_owned(),
+                "enable".to_owned(),
+                "--now".to_owned(),
+                "cpa-stack-cli-proxy-api.service".to_owned(),
+            ],
+            vec![
+                "systemctl".to_owned(),
+                "enable".to_owned(),
+                "--now".to_owned(),
+                "cpa-stack-usage-keeper.service".to_owned(),
+            ],
+        ]
+    );
+    assert!(paths.bin.join("run-cli-proxy-api").is_file());
+}
+
+#[test]
+fn linux_lifecycle_updates_disabled_marker_and_uses_systemctl() {
+    let temp_dir = TempDir::new().unwrap();
+    let paths = paths(&temp_dir);
+    let runner = RecordingRunner::default();
+    let platform = LinuxPlatform::with_runner(runner.clone(), paths.clone());
+
+    platform.stop(Service::Keeper).unwrap();
+    assert!(paths.disabled_file(Service::Keeper).exists());
+    platform.start(Service::Keeper).unwrap();
+
+    assert!(!paths.disabled_file(Service::Keeper).exists());
+    assert_eq!(
+        runner.calls(),
+        vec![
+            vec![
+                "systemctl".to_owned(),
+                "stop".to_owned(),
+                "cpa-stack-usage-keeper.service".to_owned(),
+            ],
+            vec![
+                "systemctl".to_owned(),
+                "start".to_owned(),
+                "cpa-stack-usage-keeper.service".to_owned(),
+            ],
+        ]
+    );
+}
+
+#[test]
+fn linux_service_mutations_require_root() {
+    let temp_dir = TempDir::new().unwrap();
+    let platform =
+        LinuxPlatform::with_runner_and_user_id(RecordingRunner::default(), paths(&temp_dir), 1000);
+
+    assert_eq!(
+        platform.check_permissions().unwrap_err().to_string(),
+        "Linux 系统服务管理需要 root 权限，请使用 sudo cpactl 重新运行命令"
+    );
+}
+
+#[test]
+fn linux_activation_switches_a_unix_directory_link() {
+    let temp_dir = TempDir::new().unwrap();
+    let paths = paths(&temp_dir);
+    let release = paths.releases.join("cli-proxy-api").join("v1");
+    std::fs::create_dir_all(&release).unwrap();
+    let platform = LinuxPlatform::with_runner(RecordingRunner::default(), paths.clone());
+
+    platform
+        .replace_current_link(Service::Cli, &release)
+        .unwrap();
+
+    assert_eq!(
+        std::fs::canonicalize(paths.current.join("cli-proxy-api")).unwrap(),
+        std::fs::canonicalize(release).unwrap()
+    );
+}
+
+#[test]
+fn linux_statuses_query_both_systemd_units_once() {
+    let temp_dir = TempDir::new().unwrap();
+    let runner = RecordingRunner::with_results([CommandOutput {
+        success: true,
+        stdout: concat!(
+            "Id=cpa-stack-cli-proxy-api.service\nLoadState=loaded\n\n",
+            "Id=cpa-stack-usage-keeper.service\nLoadState=not-found\n"
+        )
+        .into(),
+        stderr: String::new(),
+    }]);
+    let platform = LinuxPlatform::with_runner(runner.clone(), paths(&temp_dir));
+
+    let statuses = platform.statuses().unwrap();
+
+    assert!(statuses[0].1.managed);
+    assert!(!statuses[1].1.managed);
+    assert_eq!(
+        runner.calls(),
+        vec![vec![
+            "systemctl".to_owned(),
+            "show".to_owned(),
+            "--property=Id,LoadState".to_owned(),
+            "cpa-stack-cli-proxy-api.service".to_owned(),
+            "cpa-stack-usage-keeper.service".to_owned(),
+        ]]
+    );
+}
+
+#[test]
+fn linux_install_removes_units_when_registration_fails() {
+    let temp_dir = TempDir::new().unwrap();
+    let paths = paths(&temp_dir);
+    let runner = RecordingRunner::with_results([
+        CommandOutput::success(),
+        CommandOutput::success(),
+        CommandOutput::failure(),
+        CommandOutput::success(),
+        CommandOutput::success(),
+        CommandOutput::success(),
+    ]);
+    let platform = LinuxPlatform::with_runner(runner.clone(), paths);
+
+    assert!(platform.install_services().is_err());
+
+    assert!(!platform.unit_path(Service::Cli).exists());
+    assert!(!platform.unit_path(Service::Keeper).exists());
+    assert!(runner.calls().iter().any(|call| {
+        call == &[
+            "systemctl",
+            "disable",
+            "--now",
+            "cpa-stack-cli-proxy-api.service",
+        ]
+    }));
 }
 
 #[test]

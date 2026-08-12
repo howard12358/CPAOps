@@ -31,6 +31,7 @@ pub struct ReleaseMetadata {
 pub enum ReleasePlatform {
     MacosAarch64,
     WindowsX86_64,
+    LinuxX86_64,
 }
 
 impl ReleasePlatform {
@@ -43,9 +44,14 @@ impl ReleasePlatform {
         {
             Ok(Self::WindowsX86_64)
         }
+        #[cfg(all(target_os = "linux", target_arch = "x86_64"))]
+        {
+            Ok(Self::LinuxX86_64)
+        }
         #[cfg(not(any(
             all(target_os = "macos", target_arch = "aarch64"),
-            all(target_os = "windows", target_arch = "x86_64")
+            all(target_os = "windows", target_arch = "x86_64"),
+            all(target_os = "linux", target_arch = "x86_64")
         )))]
         {
             Err(AppError::State("当前平台或架构不受支持".into()))
@@ -111,6 +117,14 @@ fn is_platform_asset(service: Service, platform: ReleasePlatform, name: &str) ->
         }
         (Service::Keeper, ReleasePlatform::WindowsX86_64) => {
             name.starts_with("cpa-usage-keeper_v") && name.ends_with("_windows_amd64.zip")
+        }
+        (Service::Cli, ReleasePlatform::LinuxX86_64) => {
+            name.starts_with("CLIProxyAPI_")
+                && name.ends_with("_linux_amd64.tar.gz")
+                && !name.ends_with("_no-plugin.tar.gz")
+        }
+        (Service::Keeper, ReleasePlatform::LinuxX86_64) => {
+            name.starts_with("cpa-usage-keeper_v") && name.ends_with("_linux_amd64.tar.gz")
         }
     }
 }
@@ -337,7 +351,7 @@ impl ReleaseTransaction {
         if cfg!(target_os = "windows") {
             definition.windows_binary_name
         } else {
-            definition.macos_binary_name
+            definition.unix_binary_name
         }
     }
 

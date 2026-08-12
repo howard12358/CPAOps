@@ -69,7 +69,7 @@ fn create_release(store: &RuntimeStore, service: Service, version: &str) -> Path
     let binary = if cfg!(target_os = "windows") {
         definition.windows_binary_name
     } else {
-        definition.macos_binary_name
+        definition.unix_binary_name
     };
     fs::write(directory.join(binary), "release binary").unwrap();
     fs::write(directory.join(".verified"), "verified\n").unwrap();
@@ -157,6 +157,38 @@ fn chooses_only_the_current_platform_asset() {
         "https://example.invalid/CLIProxyAPI_1.2.3_darwin_aarch64.tar.gz"
     );
     assert_eq!(plan.checksums.url, "https://example.invalid/checksums.txt");
+}
+
+#[test]
+fn linux_cli_chooses_plugin_enabled_amd64_asset() {
+    let metadata = metadata(vec![
+        asset("CLIProxyAPI_1.2.3_linux_amd64_no-plugin.tar.gz"),
+        asset("CLIProxyAPI_1.2.3_linux_aarch64.tar.gz"),
+        asset("CLIProxyAPI_1.2.3_linux_amd64.tar.gz"),
+        asset("checksums.txt"),
+    ]);
+
+    let plan =
+        ReleasePlan::from_metadata(Service::Cli, &metadata, ReleasePlatform::LinuxX86_64).unwrap();
+
+    assert_eq!(plan.asset.name, "CLIProxyAPI_1.2.3_linux_amd64.tar.gz");
+}
+
+#[test]
+fn linux_keeper_chooses_amd64_asset() {
+    let metadata = metadata(vec![
+        asset("cpa-usage-keeper_v1.14.3_linux_arm64.tar.gz"),
+        asset("cpa-usage-keeper_v1.14.3_linux_amd64.tar.gz"),
+        asset("checksums.txt"),
+    ]);
+
+    let plan = ReleasePlan::from_metadata(Service::Keeper, &metadata, ReleasePlatform::LinuxX86_64)
+        .unwrap();
+
+    assert_eq!(
+        plan.asset.name,
+        "cpa-usage-keeper_v1.14.3_linux_amd64.tar.gz"
+    );
 }
 
 #[test]
