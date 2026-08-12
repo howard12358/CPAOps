@@ -110,6 +110,12 @@ pub trait Platform {
     fn stop(&self, service: Service) -> Result<(), AppError>;
     fn restart(&self, service: Service) -> Result<(), AppError>;
     fn status(&self, service: Service) -> Result<ServiceStatus, AppError>;
+    fn statuses(&self) -> Result<[(Service, ServiceStatus); 2], AppError> {
+        Ok([
+            (Service::Cli, self.status(Service::Cli)?),
+            (Service::Keeper, self.status(Service::Keeper)?),
+        ])
+    }
     fn replace_current_link(&self, service: Service, release: &Path) -> Result<(), AppError>;
     fn is_port_listening(&self, service: Service) -> Result<bool, AppError>;
     fn wait_for_port(&self, service: Service) -> Result<bool, AppError> {
@@ -207,6 +213,16 @@ impl Platform for SystemPlatform {
             Self::Macos(platform) => platform.status(service),
             #[cfg(target_os = "windows")]
             Self::Windows(platform) => platform.status(service),
+            Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
+        }
+    }
+
+    fn statuses(&self) -> Result<[(Service, ServiceStatus); 2], AppError> {
+        match self {
+            #[cfg(target_os = "macos")]
+            Self::Macos(platform) => platform.statuses(),
+            #[cfg(target_os = "windows")]
+            Self::Windows(platform) => platform.statuses(),
             Self::Unsupported => Err(AppError::Usage("当前平台不受支持".into())),
         }
     }

@@ -164,10 +164,11 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
     fn status(&self) -> Result<Output, AppError> {
         self.require_installed()?;
         self.platform.check_supported()?;
-        self.platform.check_permissions()?;
-        let services = [Service::Cli, Service::Keeper]
+        let services = self
+            .platform
+            .statuses()?
             .into_iter()
-            .map(|service| self.status_entry(service))
+            .map(|(service, status)| self.status_entry(service, status))
             .collect::<Result<Vec<_>, _>>()?;
         Ok(Output::success_with_data(
             "服务状态",
@@ -495,8 +496,7 @@ impl<P: Platform, R: ReleaseProvider> App<P, R> {
         settings.save_proxy(&proxy)
     }
 
-    fn status_entry(&self, service: Service) -> Result<Value, AppError> {
-        let status = self.platform.status(service)?;
+    fn status_entry(&self, service: Service, status: ServiceStatus) -> Result<Value, AppError> {
         let definition = ServiceCatalog::definition(service);
         Ok(json!({
             "service": service.key(),

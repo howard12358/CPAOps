@@ -558,12 +558,12 @@ fn windows_port_health_queries_service_port_as_a_parameter() {
 }
 
 #[test]
-fn windows_status_queries_task_and_port_in_one_powershell_process() {
+fn windows_status_queries_both_tasks_once_without_net_tcp_module() {
     let temp_dir = TempDir::new().unwrap();
     let runner = RecordingRunner::default();
     let platform = WindowsPlatform::with_runner(runner.clone(), paths(&temp_dir));
 
-    platform.status(Service::Keeper).unwrap();
+    platform.statuses().unwrap();
 
     let calls = runner.calls();
     let powershell_calls = calls
@@ -576,7 +576,14 @@ fn windows_status_queries_task_and_port_in_one_powershell_process() {
     assert_eq!(powershell_calls.len(), 1);
     let script = powershell_script(powershell_calls[0]).unwrap();
     assert!(script.contains("Get-ScheduledTask"));
-    assert!(script.contains("Get-NetTCPConnection"));
+    assert!(!script.contains("Get-NetTCPConnection"));
+    assert_eq!(
+        powershell_parameters(powershell_calls[0]),
+        Some(vec![
+            "CPAStack-CLIProxyAPI".to_owned(),
+            "CPAStack-UsageKeeper".to_owned(),
+        ])
+    );
 }
 
 #[test]

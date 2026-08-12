@@ -1,7 +1,9 @@
 use std::env;
 use std::ffi::OsString;
 use std::fs;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, TcpStream};
 use std::path::Path;
+use std::time::Duration;
 
 use crate::domain::error::AppError;
 use crate::domain::runtime::RuntimePaths;
@@ -267,25 +269,55 @@ impl<R: CommandRunner> Platform for WindowsPlatform<R> {
     }
 
     fn status(&self, service: Service) -> Result<ServiceStatus, AppError> {
-        let port = ServiceCatalog::definition(service).port;
         let output = self.run_powershell(
             concat!(
-                "param([string]$TaskName, [int]$Port)\n",
+                "param([string]$TaskName)\n",
                 "$managed = @(Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue).Count -gt 0\n",
-                "$listening = @(Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue).Count -gt 0\n",
-                "Write-Output \"$([int]$managed),$([int]$listening)\"\n"
+                "Write-Output \"$([int]$managed)\"\n"
             ),
-            vec![
-                OsString::from(Self::task_name(service)),
-                OsString::from(port.to_string()),
-            ],
+            vec![OsString::from(Self::task_name(service))],
         )?;
-        let (managed, listening) = parse_status(&output);
+        let managed = output.success && output.stdout.trim() != "0";
         Ok(ServiceStatus {
             managed,
             disabled: self.paths.disabled_file(service).exists(),
-            listening,
+            listening: port_listening(service),
         })
+    }
+
+    fn statuses(&self) -> Result<[(Service, ServiceStatus); 2], AppError> {
+        let output = self.run_powershell(
+            concat!(
+                "param([string]$CliTask, [string]$KeeperTask)\n",
+                "$cli = @(Get-ScheduledTask -TaskName $CliTask -ErrorAction SilentlyContinue).Count -gt 0\n",
+                "$keeper = @(Get-ScheduledTask -TaskName $KeeperTask -ErrorAction SilentlyContinue).Count -gt 0\n",
+                "Write-Output \"$([int]$cli),$([int]$keeper)\"\n"
+            ),
+            vec![
+                OsString::from(Self::task_name(Service::Cli)),
+                OsString::from(Self::task_name(Service::Keeper)),
+            ],
+        )?;
+        let (cli_managed, keeper_managed) = parse_managed_statuses(&output);
+        let [cli_listening, keeper_listening] = parallel_port_statuses();
+        Ok([
+            (
+                Service::Cli,
+                ServiceStatus {
+                    managed: cli_managed,
+                    disabled: self.paths.disabled_file(Service::Cli).exists(),
+                    listening: cli_listening,
+                },
+            ),
+            (
+                Service::Keeper,
+                ServiceStatus {
+                    managed: keeper_managed,
+                    disabled: self.paths.disabled_file(Service::Keeper).exists(),
+                    listening: keeper_listening,
+                },
+            ),
+        ])
     }
 
     fn replace_current_link(&self, service: Service, release: &Path) -> Result<(), AppError> {
@@ -328,7 +360,7 @@ fn encode_powershell(value: &str) -> String {
     base64::engine::general_purpose::STANDARD.encode(utf16)
 }
 
-fn parse_status(output: &CommandOutput) -> (bool, bool) {
+fn parse_managed_statuses(output: &CommandOutput) -> (bool, bool) {
     if !output.success {
         return (false, false);
     }
@@ -336,6 +368,22 @@ fn parse_status(output: &CommandOutput) -> (bool, bool) {
         Some((managed, listening)) => (managed.trim() == "1", listening.trim() == "1"),
         None => (true, true),
     }
+}
+
+fn port_listening(service: Service) -> bool {
+    let address = SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        ServiceCatalog::definition(service).port,
+    );
+    TcpStream::connect_timeout(&address, Duration::from_millis(250)).is_ok()
+}
+
+fn parallel_port_statuses() -> [bool; 2] {
+    std::thread::scope(|scope| {
+        let cli = scope.spawn(|| port_listening(Service::Cli));
+        let keeper = scope.spawn(|| port_listening(Service::Keeper));
+        [cli.join().unwrap_or(false), keeper.join().unwrap_or(false)]
+    })
 }
 
 fn encode_powershell_invocation(script: &str, parameters: &[OsString]) -> Result<String, AppError> {
