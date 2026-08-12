@@ -460,6 +460,7 @@ fn linux_service_mutations_require_root() {
 }
 
 #[test]
+#[cfg(unix)]
 fn linux_activation_switches_a_unix_directory_link() {
     let temp_dir = TempDir::new().unwrap();
     let paths = paths(&temp_dir);
