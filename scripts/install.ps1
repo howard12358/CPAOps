@@ -1,12 +1,22 @@
 [CmdletBinding()]
 param(
-    [string]$Version = 'v0.1.0',
+    [string]$Version,
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'Programs\cpactl\bin'),
     [switch]$NoInstall
 )
 
 $ErrorActionPreference = 'Stop'
 $repository = 'howard12358/CPAOps'
+if ([string]::IsNullOrWhiteSpace($Version)) {
+    $latestUrl = (& curl.exe -fsSL -o NUL -w '%{url_effective}' "https://github.com/$repository/releases/latest").Trim()
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($latestUrl)) {
+        throw '无法确定 cpactl 最新版本。请检查网络或代理环境变量。'
+    }
+    $Version = ($latestUrl -split '/')[-1]
+    if ($Version -notmatch '^v\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$') {
+        throw "GitHub 返回的最新版本号无效：$Version"
+    }
+}
 $asset = "cpactl-$Version-windows-amd64.zip"
 $baseUrl = "https://github.com/$repository/releases/download/$Version"
 $temporary = Join-Path ([IO.Path]::GetTempPath()) ("cpactl-" + [guid]::NewGuid())

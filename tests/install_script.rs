@@ -4,6 +4,10 @@ fn installer() -> String {
     fs::read_to_string("scripts/install.sh").unwrap()
 }
 
+fn windows_installer() -> String {
+    fs::read_to_string("scripts/install.ps1").unwrap()
+}
+
 #[test]
 fn installer_supports_linux_amd64_release_assets() {
     let script = installer();
@@ -34,4 +38,20 @@ fn installer_resolves_latest_release_when_version_is_not_explicit() {
 
     assert!(script.contains("releases/latest"));
     assert!(!script.contains("VERSION=\"${CPACTL_VERSION:-v0.1.0}\""));
+}
+
+#[test]
+fn windows_installer_resolves_latest_release_when_version_is_not_explicit() {
+    let script = windows_installer();
+
+    assert!(script.contains("releases/latest"));
+    assert!(!script.contains("[string]$Version = 'v0.1.0'"));
+}
+
+#[test]
+fn windows_installer_keeps_explicit_version_support() {
+    let script = windows_installer();
+
+    assert!(script.contains("[string]$Version"));
+    assert!(script.contains("releases/download/$Version"));
 }
