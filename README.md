@@ -14,25 +14,25 @@
 macOS：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/howard12358/CPAOps/main/scripts/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/rustyllh/CPAOps/main/scripts/install.sh | bash
 ```
 
 Linux AMD64（需要 root 权限）：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/howard12358/CPAOps/main/scripts/install.sh | sudo bash
+curl -fsSL https://raw.githubusercontent.com/rustyllh/CPAOps/main/scripts/install.sh | sudo bash
 ```
 
 如果下载需要代理，请保留当前代理环境变量：
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/howard12358/CPAOps/main/scripts/install.sh | sudo -E bash
+curl -fsSL https://raw.githubusercontent.com/rustyllh/CPAOps/main/scripts/install.sh | sudo -E bash
 ```
 
 Windows（以管理员身份打开 PowerShell）：
 
 ```powershell
-irm https://raw.githubusercontent.com/howard12358/CPAOps/main/scripts/install.ps1 | iex
+irm https://raw.githubusercontent.com/rustyllh/CPAOps/main/scripts/install.ps1 | iex
 ```
 
 安装脚本会校验下载文件。macOS 将 `cpactl` 加入当前用户的全局命令路径；Linux 安装到 `/usr/local/bin/cpactl`。支持常见代理环境变量，例如：

@@ -7,5 +7,6 @@ pub mod github;
 pub mod output;
 pub mod platform;
 pub mod progress;
+pub mod project;
 pub mod storage;
 pub mod upgrade;

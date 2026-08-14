@@ -55,3 +55,9 @@ fn windows_installer_keeps_explicit_version_support() {
     assert!(script.contains("[string]$Version"));
     assert!(script.contains("releases/download/$Version"));
 }
+
+#[test]
+fn installers_download_from_the_current_project_repository() {
+    assert!(installer().contains("REPOSITORY=\"rustyllh/CPAOps\""));
+    assert!(windows_installer().contains("$repository = 'rustyllh/CPAOps'"));
+}

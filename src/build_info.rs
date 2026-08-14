@@ -5,14 +5,17 @@ use sha2::{Digest, Sha256};
 use time::OffsetDateTime;
 use time::format_description::well_known::Rfc3339;
 
+use crate::project::HOMEPAGE;
+
 pub fn version_text() -> String {
     format!(
-        "cpactl v{} ({}) {}/{}\nbuilt at: {}\nhttps://github.com/howard12358/CPAOps",
+        "cpactl v{} ({}) {}/{}\nbuilt at: {}\n{}",
         env!("CPACTL_RELEASE_VERSION"),
         env!("CPACTL_GIT_REVISION"),
         platform_name(),
         architecture_name(),
         build_time(),
+        HOMEPAGE,
     )
 }
 

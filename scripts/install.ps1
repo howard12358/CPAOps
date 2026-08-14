@@ -6,7 +6,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-$repository = 'howard12358/CPAOps'
+$repository = 'rustyllh/CPAOps'
 if ([string]::IsNullOrWhiteSpace($Version)) {
     $latestUrl = (& curl.exe -fsSL -o NUL -w '%{url_effective}' "https://github.com/$repository/releases/latest").Trim()
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($latestUrl)) {

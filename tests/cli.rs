@@ -118,7 +118,7 @@ fn version_output_uses_compact_release_style_without_binary_hash() {
         .stdout(predicate::str::starts_with("cpactl v"))
         .stdout(predicate::str::contains("built at: "))
         .stdout(predicate::str::contains(
-            "https://github.com/howard12358/CPAOps",
+            "https://github.com/rustyllh/CPAOps",
         ))
         .stdout(predicate::str::contains("二进制 SHA-256").not());
 }

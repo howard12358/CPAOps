@@ -7,9 +7,8 @@ use crate::domain::runtime::RuntimePaths;
 use crate::github::GithubClient;
 use crate::output::Output;
 use crate::progress::ProgressReporter;
+use crate::project::REPOSITORY;
 use crate::storage::config::ConfigStore;
-
-const REPOSITORY: &str = "howard12358/CPAOps";
 
 pub fn run(
     paths: RuntimePaths,
